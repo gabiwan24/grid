@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interaktives Vollbild-Grid</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- KORREKTUR: Tone.js Link auf robustere unpkg Quelle umgestellt -->
+    <script src="https://unpkg.com/tone@14.8.52/build/Tone.js"></script>
     <style>
         /* CSS-Variablen-Definition im Root-Element */
         :root {
@@ -66,7 +68,8 @@
         /* Basisstil für alle Rechtecke */
         .rectangle {
             position: absolute; 
-            opacity: 0.8;
+            opacity: 1.0; /* Voll deckend (1.0) zur Vermeidung heller Ränder */
+            border-radius: 0; /* Keine runden Ecken */
             /* Übergang für das flüssige Morphing über CSS-Transform */
             transition: 
                 transform 500ms ease-in-out, 
@@ -82,7 +85,7 @@
         .color-3 { background-color: var(--color-3); }
         .color-4 { background-color: var(--color-4); }
 
-        /* NEU: Canvas für das Hintergrundraster (ersetzt #plusOverlay) */
+        /* NEU: Canvas für das Hintergrundraster (alle Punkte, hohe Performance) */
         #plusCanvas {
             position: absolute;
             top: 50%;
@@ -90,7 +93,6 @@
             transform: translate(-50%, -50%); 
             pointer-events: none; 
             z-index: 5; /* HINTERGRUND */
-            /* Das Zeichnen passiert im JS, nicht hier */
         }
 
         /* Container für die Plus-Symbole an den Eckpunkten (VORDERGRUND) */
@@ -112,22 +114,22 @@
             background: 
                 linear-gradient(to bottom, var(--plus-color), var(--plus-color)) center no-repeat,
                 linear-gradient(to left, var(--plus-color), var(--plus-color)) center no-repeat;
-            background-size: 2px 100%, 100% 2px; /* Liniendicke auf 2px erhöht */
+            background-size: 2px 100%, 100% 2px; /* Liniendicke auf 2px (doppelt) erhöht */
             transform: translate(-50%, -50%); /* Zentriert den Pluspunkt an seiner Position */
             transition: all 150ms ease-out, opacity 50ms linear; /* Wichtig: Übergang für das Aufleuchten */
             opacity: 0.0; /* Startet VERBORGEN für sequentielle Aktivierung */
         }
 
-        /* Steuerungselemente unten links - NEUES DESIGN */
+        /* Steuerungselemente unten links - SCHWARZ-TRANSPARENTES RECHTECK */
         .controls {
             position: fixed;
             bottom: 20px;
             left: 20px;
             z-index: 100;
             background-color: rgba(0, 0, 0, 0.15); /* SCHWARZ-TRANSPARENT (0.15) */
-            padding: 1.5rem; /* Etwas mehr Padding */
+            padding: 1.5rem; 
             border-radius: 0; /* Keine runden Ecken */
-            box-shadow: none; /* Kein Schatten */
+            box-shadow: none; 
             width: 280px;
         }
         
@@ -138,7 +140,7 @@
         
         /* Slider Track Design */
         input[type=range]::-webkit-slider-runnable-track {
-            background: rgba(255, 255, 255, 0.2); /* Hellerer Track */
+            background: rgba(255, 255, 255, 0.2); 
             height: 2px;
         }
         input[type=range]::-webkit-slider-thumb {
@@ -146,8 +148,8 @@
             width: 14px;
             height: 14px;
             border-radius: 50%;
-            background: var(--color-1); /* Cyan-Farbe für den Thumb */
-            margin-top: -6px; /* Zentrieren des Thumbs auf dem Track */
+            background: var(--color-1); 
+            margin-top: -6px; 
         }
     </style>
 </head>
@@ -157,7 +159,7 @@
         <!-- 1. Grid-Container für die Rechtecke (wird von JS befüllt) --><div id="gridContainer" class="grid-container">
             <!-- Rechtecke werden hier eingefügt --></div>
 
-        <!-- 2. NEU: Canvas für das Hintergrundraster (alle Punkte) --><canvas id="plusCanvas"></canvas>
+        <!-- 2. Canvas für das Hintergrundraster (alle Punkte) --><canvas id="plusCanvas"></canvas>
         
         <!-- 3. Overlay für die Plus-Symbole an den Eckpunkten (VORDERGRUND) --><div id="plusFrontLayer">
             <!-- Nur die Eckpunkte der Rechtecke --></div>
@@ -170,7 +172,7 @@
                 type="range" 
                 id="grid-slider" 
                 min="20" 
-                max="250" /* MAXIMALWERT ERHÖHT */
+                max="250" 
                 value="50" 
                 class="w-full h-2 bg-gray-300 appearance-none cursor-pointer range-lg transition duration-300"
             >
@@ -186,7 +188,13 @@
         let RECTANGLE_DATA = []; 
         const COLOR_CLASSES = ['color-1', 'color-2', 'color-3', 'color-4']; 
         let currentRectangleElements = []; 
-        let currentMorphTimeout = null; // Speichert den Timeout für das Morphing
+        let currentMorphTimeout = null; 
+        
+        // Ein kleiner Überlappungswert, um Subpixel-Lücken zu vermeiden.
+        const PIXEL_FIX = 1; 
+        
+        // Tone.js Synth für den Klick-Sound
+        let synth;
 
         const gridWrapper = document.querySelector('.grid-wrapper');
         const gridContainer = document.getElementById('gridContainer');
@@ -195,6 +203,44 @@
         const slider = document.getElementById('grid-slider');
         const sizeDisplay = document.getElementById('grid-size-display');
         const root = document.documentElement;
+        
+        /**
+         * Initialisiert den Tone.js Synth.
+         */
+        function initializeAudio() {
+            if (typeof Tone === 'undefined') {
+                console.error("Tone.js konnte nicht geladen werden.");
+                return;
+            }
+            if (synth) return; 
+            
+            // Definiert einen einfachen, kurzen Percussion-Sound (NoiseSynth)
+            synth = new Tone.NoiseSynth({
+                noise: {
+                    type: "white"
+                },
+                envelope: {
+                    attack: 0.001,
+                    decay: 0.05,
+                    sustain: 0.001,
+                    release: 0.05
+                }
+            }).toDestination();
+            
+            if (Tone.context.state !== 'running') {
+                Tone.start();
+            }
+        }
+        
+        /**
+         * Spielt den kurzen Klick-Sound ab.
+         */
+        function playClickSound() {
+            if (synth) {
+                synth.triggerAttackRelease(0.05); 
+            }
+        }
+
 
         /**
          * Berechnet die optimale Anzahl von Spalten und Zeilen, um den Bildschirm auszufüllen.
@@ -203,18 +249,15 @@
             const wrapperWidth = gridWrapper.clientWidth;
             const wrapperHeight = gridWrapper.clientHeight;
             
-            // Berechnet die maximal mögliche Anzahl von Spalten und Zeilen (90% des Viewports)
             GRID_COLUMNS = Math.floor((wrapperWidth * 0.9) / gridSize);
             GRID_ROWS = Math.floor((wrapperHeight * 0.9) / gridSize);
             
-            // Behält mindestens ein 5x5-Raster bei
             GRID_COLUMNS = Math.max(5, GRID_COLUMNS);
             GRID_ROWS = Math.max(5, GRID_ROWS);
 
             const gridWidth = GRID_COLUMNS * gridSize;
             const gridHeight = GRID_ROWS * gridSize;
             
-            // Setzt die Größe des Grid-Containers (wichtig für die Zentrierung des Overlays)
             gridContainer.style.width = `${gridWidth}px`;
             gridContainer.style.height = `${gridHeight}px`;
 
@@ -223,7 +266,7 @@
 
 
         /**
-         * Generiert genau 4 Rechtecke, die sich an einem zentralen Gitterpunkt treffen (Ecke berühren).
+         * Generiert genau 4 Rechtecke, die sich an einem zentralen Gitterpunkt treffen.
          */
         function generateRectangleData(clickCm = null, clickRm = null) {
             RECTANGLE_DATA = []; 
@@ -241,7 +284,6 @@
             let Cm, Rm;
 
             if (clickCm !== null && clickRm !== null) {
-                // Verwende den Klickpunkt, klemme ihn aber an den sicheren Bereich.
                 Cm = Math.max(minCol, Math.min(clickCm, maxCol - 1)); 
                 Rm = Math.max(minRow, Math.min(clickRm, maxRow - 1));
             } else {
@@ -252,7 +294,7 @@
 
             const getRandomSpan = (max) => Math.floor(Math.random() * max) + 1; 
 
-            // 2. Definiert die 4 Rechtecke relativ zu (Cm, Rm)
+            // Definiert die 4 Rechtecke relativ zu (Cm, Rm)
             
             // Rectangle 1: Top-Left Quadrant (color-1)
             const colSpan1 = getRandomSpan(Cm - 1); 
@@ -277,8 +319,6 @@
 
         /**
          * Rendert die Rechtecke, indem absolute Pixelwerte und CSS Transform für flüssiges Morphing angewendet werden.
-         * @param {number} gridSize - Aktuelle Grid-Zellengröße in Pixeln.
-         * @param {boolean} immediate - Wenn true, werden CSS-Transitionen temporär deaktiviert.
          */
         function renderRectangles(gridSize, immediate = false) {
             // Initiales Rendern: Erstellt die Rechteck-Elemente, falls sie nicht existieren
@@ -294,11 +334,9 @@
                     gridContainer.appendChild(rect);
                     currentRectangleElements.push(rect);
                 }
-                // Beim Initialisieren sollte das Morphing sofort starten
                 immediate = true; 
             }
             
-            // Deaktiviert Transitionen temporär, wenn sofortige Aktualisierung gewünscht ist (z.B. bei Resize)
             if (immediate) {
                 currentRectangleElements.forEach(rect => rect.style.transition = 'none');
             }
@@ -307,22 +345,29 @@
             RECTANGLE_DATA.forEach((data, index) => {
                 const rect = currentRectangleElements[index];
                 if (rect) {
-                    // Entfernt alte Farbklassen und fügt die neue hinzu
                     COLOR_CLASSES.forEach(cls => rect.classList.remove(cls));
                     rect.classList.add(data.colorClass); 
                     
-                    // Berechnet absolute Pixelwerte basierend auf der aktuellen Grid-Größe
                     const pixelWidth = data.colSpan * gridSize;
                     const pixelHeight = data.rowSpan * gridSize;
-                    // colStart/rowStart sind 1-basiert, daher -1 für 0-basierten Startpunkt
-                    const pixelX = (data.colStart - 1) * gridSize; 
-                    const pixelY = (data.rowStart - 1) * gridSize; 
+                    let pixelX = (data.colStart - 1) * gridSize; 
+                    let pixelY = (data.rowStart - 1) * gridSize; 
+                    
+                    // --- ANPASSUNG ZUR BEHEBUNG VON SUBPIXEL-LÜCKEN (Überlappung) ---
+                    const fixedWidth = pixelWidth + PIXEL_FIX;
+                    const fixedHeight = pixelHeight + PIXEL_FIX;
+                    
+                    // Korrigiert die Position, wenn das Rechteck nicht am oberen/linken Rand beginnt
+                    if (data.colStart > 1) {
+                        pixelX -= PIXEL_FIX;
+                    }
+                    if (data.rowStart > 1) {
+                        pixelY -= PIXEL_FIX;
+                    }
 
-                    // Aktualisiert die Dimensionen
-                    rect.style.width = `${pixelWidth}px`;
-                    rect.style.height = `${pixelHeight}px`;
+                    rect.style.width = `${fixedWidth}px`;
+                    rect.style.height = `${fixedHeight}px`;
 
-                    // Aktualisiert die Position über CSS transform für flüssiges Morphing
                     rect.style.transform = `translate(${pixelX}px, ${pixelY}px)`;
                 }
             });
@@ -331,7 +376,6 @@
             if (immediate) {
                 setTimeout(() => {
                     currentRectangleElements.forEach(rect => {
-                        // Setzt die ursprüngliche Transition aus dem CSS (500ms) wieder ein
                         rect.style.transition = 'transform 500ms ease-in-out, width 500ms ease-in-out, height 500ms ease-in-out, background-color 300ms ease-out';
                     });
                 }, 50);
@@ -372,16 +416,14 @@
 
         /**
          * Rendert die Plus-Symbole an den Eckpunkten der Rechtecke im Vordergrund (DOM-Elemente).
-         * Gibt das Array der erstellten, aber noch unsichtbaren Elemente zurück.
          */
         function renderForegroundPlusIcons(gridWidth, gridHeight, gridSize) {
-            plusFrontLayer.innerHTML = ''; // Leert den Vordergrund-Layer
+            plusFrontLayer.innerHTML = ''; 
             
-            // Setzt die Dimensionen des Overlay-Containers für die Zentrierung
             plusFrontLayer.style.width = `${gridWidth + 1}px`; 
             plusFrontLayer.style.height = `${gridHeight + 1}px`; 
 
-            // 1. Sammelt alle Eckpunkt-Koordinaten der 4 Rechtecke
+            // 1. Sammelt alle Eckpunkt-Koordinaten
             const cornerPoints = new Set(); 
             if (RECTANGLE_DATA.length > 0) {
                  const Cm = RECTANGLE_DATA[1].colStart; 
@@ -390,7 +432,6 @@
                  const pX = (Cm - 1) * gridSize;
                  const pY = (Rm - 1) * gridSize;
                  
-                 // Der zentrale Treffpunkt
                  cornerPoints.add(`${pX},${pY}`);
                  
                  // Die 16 Eckpunkte der 4 Rechtecke
@@ -407,7 +448,7 @@
                 });
             }
 
-            // 2. Erstellt Plus-Symbole nur für die Eckpunkte (startet unsichtbar durch CSS)
+            // 2. Erstellt Plus-Symbole
             const createdIcons = [];
             cornerPoints.forEach(key => {
                 const [leftPos, topPos] = key.split(',').map(Number);
@@ -424,13 +465,13 @@
         }
 
         /**
-         * NEU: Lässt die übergebenen Icons nacheinander aufleuchten.
+         * Lässt die Icons nacheinander aufleuchten und spielt Sound ab.
          */
         function staggerLightUpIcons(icons) {
             icons.forEach((icon, index) => {
-                // Staggered timeout: 50ms delay per icon
                 setTimeout(() => {
                     icon.style.opacity = '1.0';
+                    playClickSound(); 
                 }, index * 50);
             });
         }
@@ -442,23 +483,16 @@
         function updateGrid(size) {
             const gridSize = parseInt(size);
             
-            // 1. Aktualisiert die CSS-Variable in Echtzeit
             root.style.setProperty('--grid-size', gridSize + 'px');
             sizeDisplay.textContent = gridSize;
 
-            // 2. Berechnet die neuen optimalen Grid-Dimensionen (Anzahl der Spalten/Zeilen)
             const { gridWidth, gridHeight } = calculateGridDimensions(gridSize);
             
-            // 3. Rendert das Hintergrundraster auf dem Canvas (schnell!)
             renderCanvasGrid(gridWidth, gridHeight, gridSize);
             
-            // 4. Rendert die Vordergrund-Plus-Symbole (nur wenige DOM-Elemente)
-            // Bei Slider-Bewegung sollen sie sofort erscheinen (nicht gestaffelt)
             const icons = renderForegroundPlusIcons(gridWidth, gridHeight, gridSize);
             icons.forEach(icon => icon.style.opacity = '1.0');
 
-            // 5. Rendert/Aktualisiert die Rechtecke (jetzt mit neuer gridSize).
-            // Bei Slider-Bewegung: immediate = true, da Morphing nicht nötig, aber flüssige Anpassung.
             renderRectangles(gridSize, true); 
         }
 
@@ -466,7 +500,8 @@
          * Behandelt Klicks auf den Grid-Container, um den neuen Mittelpunkt zu setzen.
          */
         function handleImageClick(event) {
-            // Deaktiviert Klicks, wenn bereits ein Morphing-Timeout läuft
+            initializeAudio(); 
+            
             if (currentMorphTimeout !== null) return;
             
             const gridSize = parseInt(slider.value);
@@ -496,9 +531,8 @@
 
             // 4. Startet den Morphing-Timeout (1000ms)
             currentMorphTimeout = setTimeout(() => {
-                // Führt das Morphing aus, indem die neuen Daten angewendet werden
                 renderRectangles(gridSize); 
-                currentMorphTimeout = null; // Setzt den Timeout zurück
+                currentMorphTimeout = null; 
             }, 1000); // 1 Sekunde Verzögerung
         }
 
@@ -508,7 +542,8 @@
         function initialize() {
             // Event listener für den Slider (Echtzeit-Update ohne Throttling)
             slider.addEventListener('input', (event) => {
-                // Wenn Morphing läuft, sollte der Morphing-Timeout gestoppt werden
+                 initializeAudio(); 
+                
                 if (currentMorphTimeout !== null) {
                     clearTimeout(currentMorphTimeout);
                     currentMorphTimeout = null;
@@ -521,7 +556,7 @@
 
             // Initiales Rendering beim Laden der Seite
             const initialGridSize = slider.value;
-            generateRectangleData(); // Erstmals Daten zufällig generieren
+            generateRectangleData(); 
             updateGrid(initialGridSize); 
 
             // Passt das Grid bei Fenstergröße-Änderung an
@@ -530,8 +565,8 @@
             });
         }
 
-        // Startet die Anwendung
-        initialize();
+        // Startet die Anwendung erst nach dem vollständigen Laden des Fensters.
+        window.onload = initialize;
     </script>
 </body>
 </html>
