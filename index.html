@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interaktives Vollbild-Grid</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* CSS-Variablen-Definition im Root-Element */
+        :root {
+            --grid-size: 50px; /* Standardgröße der Grid-Zelle */
+            --grid-columns: 10; 
+            --grid-rows: 8;   
+            --plus-size: 6px; /* Reduzierte Größe der Plus-Symbole */
+            --dark-blue: #0A0A2A; /* Dunkler Hintergrund */
+            
+            /* NEUE FARBDEFINITIONEN (Vier Cyantöne) */
+            --color-1: #00FFFF;  /* Aqua/Hell-Cyan */
+            --color-2: #40E0D0;  /* Türkis/Medium-Cyan */
+            --color-3: #00CED1;  /* DarkTurquoise/Dunkleres Cyan */
+            --color-4: #20B2AA;  /* LightSeaGreen/Grünliches Cyan */
+
+            --plus-color: #FFFFFF; /* Farbe der Plus-Symbole */
+        }
+
+        /* Vollbild- und Randabfallende Darstellung */
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            overflow: hidden; /* Verhindert Scrollbalken */
+        }
+
+        body {
+            background-color: var(--dark-blue);
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Haupt-Grid-Container (nimmt den gesamten verfügbaren Platz ein) */
+        .grid-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        /* Das eigentliche Grid für die Rechtecke */
+        .grid-container {
+            position: relative; 
+            width: 100%; 
+            height: 100%; 
+            z-index: 10; /* Rechtecke liegen VOR dem Haupt-Grid-Overlay */
+        }
+
+        /* Basisstil für alle Rechtecke */
+        .rectangle {
+            position: absolute; 
+            opacity: 0.8;
+            border-radius: 4px;
+            /* Übergang für das flüssige Morphing über CSS-Transform */
+            transition: 
+                transform 500ms ease-in-out, 
+                width 500ms ease-in-out,
+                height 500ms ease-in-out,
+                background-color 300ms ease-out; 
+            transform-origin: top left;
+        }
+
+        /* Spezifische Klassen für die vier Farben */
+        .color-1 { background-color: var(--color-1); }
+        .color-2 { background-color: var(--color-2); }
+        .color-3 { background-color: var(--color-3); }
+        .color-4 { background-color: var(--color-4); }
+
+        /* Container für die festen Plus-Symbole im HINTERGRUND */
+        #plusOverlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%); 
+            pointer-events: none; 
+            z-index: 5; /* HINTERGRUND */
+        }
+
+        /* NEU: Container für die Plus-Symbole an den Eckpunkten (VORDERGRUND) */
+        #plusFrontLayer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%); 
+            pointer-events: none; 
+            z-index: 20; /* VORDERGRUND - über den Rechtecken */
+        }
+
+        /* Stil für das einzelne Plus-Symbol */
+        .plus-icon {
+            position: absolute;
+            width: var(--plus-size);
+            height: var(--plus-size);
+            /* Erzeugt ein weißes/helles Plus-Symbol */
+            background: 
+                linear-gradient(to bottom, var(--plus-color), var(--plus-color)) center no-repeat,
+                linear-gradient(to left, var(--plus-color), var(--plus-color)) center no-repeat;
+            background-size: 1px 100%, 100% 1px; /* 1px dicke Linien für feinere Darstellung */
+            transform: translate(-50%, -50%); /* Zentriert den Pluspunkt an seiner Position */
+            transition: all 150ms ease-out; /* Übergang für die Positionierung, falls nötig */
+        }
+
+        /* Steuerungselemente unten links */
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 100;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 1rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            width: 280px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Vollbild-Wrapper für das Grid und die Plus-Symbole --><div class="grid-wrapper">
+        <!-- 1. Grid-Container für die Rechtecke (wird von JS befüllt) --><div id="gridContainer" class="grid-container">
+            <!-- Rechtecke werden hier eingefügt --></div>
+
+        <!-- 2. Overlay für die Plus-Symbole im HINTERGRUND (alle Punkte) --><div id="plusOverlay">
+            <!-- Alle Plus-Symbole als Hintergrundraster --></div>
+        
+        <!-- 3. NEU: Overlay für die Plus-Symbole an den Eckpunkten (VORDERGRUND) --><div id="plusFrontLayer">
+            <!-- Nur die Eckpunkte der Rechtecke --></div>
+    </div>
+
+    <!-- Steuerungselemente unten links --><div class="controls">
+        <label for="grid-slider" class="block text-sm font-medium text-gray-700 mb-2">Rasterweite (px):</label>
+        <div class="flex items-center">
+            <input 
+                type="range" 
+                id="grid-slider" 
+                min="20" 
+                max="120" 
+                value="50" 
+                class="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer range-lg transition duration-300"
+            >
+            <span id="grid-size-display" class="ml-3 w-10 text-right text-gray-800 font-bold">50</span>
+        </div>
+        <button id="regenerate-button" class="mt-4 w-full px-4 py-2 bg-gray-800 text-white text-sm font-semibold rounded-lg shadow-md hover:bg-gray-700 transition duration-150">
+            Rechtecke neu generieren
+        </button>
+    </div>
+
+    <script>
+        // Initial values
+        let GRID_COLUMNS = 10;
+        let GRID_ROWS = 8;
+        const NUM_RECTANGLES = 4;
+        let RECTANGLE_DATA = []; 
+        const COLOR_CLASSES = ['color-1', 'color-2', 'color-3', 'color-4']; 
+        let currentRectangleElements = []; 
+
+        const gridWrapper = document.querySelector('.grid-wrapper');
+        const gridContainer = document.getElementById('gridContainer');
+        const plusOverlay = document.getElementById('plusOverlay');
+        const plusFrontLayer = document.getElementById('plusFrontLayer'); 
+        const slider = document.getElementById('grid-slider');
+        const sizeDisplay = document.getElementById('grid-size-display');
+        const regenerateButton = document.getElementById('regenerate-button');
+        const root = document.documentElement;
+
+        /**
+         * Calculates the optimal number of columns and rows to fill the screen.
+         */
+        function calculateGridDimensions(gridSize) {
+            const wrapperWidth = gridWrapper.clientWidth;
+            const wrapperHeight = gridWrapper.clientHeight;
+            
+            // Calculate the maximum possible number of columns and rows
+            GRID_COLUMNS = Math.floor((wrapperWidth * 0.9) / gridSize);
+            GRID_ROWS = Math.floor((wrapperHeight * 0.9) / gridSize);
+            
+            // Maintain at least a 5x5 grid
+            GRID_COLUMNS = Math.max(5, GRID_COLUMNS);
+            GRID_ROWS = Math.max(5, GRID_ROWS);
+
+            const gridWidth = GRID_COLUMNS * gridSize;
+            const gridHeight = GRID_ROWS * gridSize;
+            
+            // Setzt die Größe des Grid-Containers (wichtig für die Zentrierung des Overlays)
+            gridContainer.style.width = `${gridWidth}px`;
+            gridContainer.style.height = `${gridHeight}px`;
+
+            return { gridWidth, gridHeight };
+        }
+
+
+        /**
+         * Generates exactly 4 rectangles that meet at a single central grid point (corner touching).
+         */
+        function generateRectangleData() {
+            RECTANGLE_DATA = []; 
+
+            // 1. Choose a central meeting point (Cm, Rm)
+            const minCol = 3;
+            const maxCol = GRID_COLUMNS - 2;
+            const minRow = 3;
+            const maxRow = GRID_ROWS - 2;
+
+            if (maxCol < minCol || maxRow < minRow) {
+                console.error("Grid is too small to place the 4 meeting rectangles.");
+                return;
+            }
+
+            const Cm = Math.floor(Math.random() * (maxCol - minCol + 1)) + minCol;
+            const Rm = Math.floor(Math.random() * (maxRow - minRow + 1)) + minRow;
+
+            const getRandomSpan = (max) => Math.floor(Math.random() * max) + 1; 
+
+            // 2. Define the 4 rectangles relative to (Cm, Rm)
+            
+            // Rectangle 1: Top-Left Quadrant (color-1)
+            const colSpan1 = getRandomSpan(Cm - 1); 
+            const rowSpan1 = getRandomSpan(Rm - 1); 
+            RECTANGLE_DATA.push({ id: 0, colStart: Cm - colSpan1, rowStart: Rm - rowSpan1, colSpan: colSpan1, rowSpan: rowSpan1, colorClass: COLOR_CLASSES[0] });
+
+            // Rectangle 2: Top-Right Quadrant (color-2)
+            const colSpan2 = getRandomSpan(GRID_COLUMNS - Cm); 
+            const rowSpan2 = getRandomSpan(Rm - 1); 
+            RECTANGLE_DATA.push({ id: 1, colStart: Cm, rowStart: Rm - rowSpan2, colSpan: colSpan2, rowSpan: rowSpan2, colorClass: COLOR_CLASSES[1] });
+
+            // Rectangle 3: Bottom-Left Quadrant (color-3)
+            const colSpan3 = getRandomSpan(Cm - 1); 
+            const rowSpan3 = getRandomSpan(GRID_ROWS - Rm); 
+            RECTANGLE_DATA.push({ id: 2, colStart: Cm - colSpan3, rowStart: Rm, colSpan: colSpan3, rowSpan: rowSpan3, colorClass: COLOR_CLASSES[2] });
+
+            // Rectangle 4: Bottom-Right Quadrant (color-4)
+            const colSpan4 = getRandomSpan(GRID_COLUMNS - Cm); 
+            const rowSpan4 = getRandomSpan(GRID_ROWS - Rm); 
+            RECTANGLE_DATA.push({ id: 3, colStart: Cm, rowStart: Rm, colSpan: colSpan4, rowSpan: rowSpan4, colorClass: COLOR_CLASSES[3] });
+        }
+
+        /**
+         * Renders the rectangles by applying absolute pixel values and CSS transform for smooth morphing.
+         */
+        function renderRectangles(gridSize) {
+            // Initial render: Create the rectangle elements if they don't exist
+            if (currentRectangleElements.length === 0) {
+                gridContainer.innerHTML = ''; 
+                for (let i = 0; i < NUM_RECTANGLES; i++) {
+                    const rect = document.createElement('div');
+                    rect.classList.add('rectangle');
+                    rect.style.width = '0px'; 
+                    rect.style.height = '0px'; 
+                    rect.style.transform = 'translate(0px, 0px)';
+
+                    gridContainer.appendChild(rect);
+                    currentRectangleElements.push(rect);
+                }
+            }
+
+            // Update existing rectangle elements with new data
+            RECTANGLE_DATA.forEach((data, index) => {
+                const rect = currentRectangleElements[index];
+                if (rect) {
+                    // Entfernt alte Farbklassen und fügt die neue hinzu
+                    COLOR_CLASSES.forEach(cls => rect.classList.remove(cls));
+                    rect.classList.add(data.colorClass); 
+                    
+                    // Berechne absolute Pixelwerte basierend auf der aktuellen Grid-Größe
+                    const pixelWidth = data.colSpan * gridSize;
+                    const pixelHeight = data.rowSpan * gridSize;
+                    const pixelX = (data.colStart - 1) * gridSize; 
+                    const pixelY = (data.rowStart - 1) * gridSize; 
+
+                    // Aktualisiert die Dimensionen
+                    rect.style.width = `${pixelWidth}px`;
+                    rect.style.height = `${pixelHeight}px`;
+
+                    // Aktualisiert die Position über CSS transform für flüssiges Morphing
+                    rect.style.transform = `translate(${pixelX}px, ${pixelY}px)`;
+                }
+            });
+        }
+
+        /**
+         * Renders the plus icons in 2 layers: one for the background, one for the foreground (corners).
+         */
+        function renderPlusIcons(gridWidth, gridHeight, gridSize) {
+            plusOverlay.innerHTML = '';
+            plusFrontLayer.innerHTML = ''; // Leert den Vordergrund-Layer
+            
+            // Setzt die Dimensionen der Overlay-Container für die Zentrierung
+            plusOverlay.style.width = `${gridWidth + 1}px`; 
+            plusOverlay.style.height = `${gridHeight + 1}px`; 
+            plusFrontLayer.style.width = `${gridWidth + 1}px`; 
+            plusFrontLayer.style.height = `${gridHeight + 1}px`; 
+
+            // 1. Sammelt alle Eckpunkt-Koordinaten der 4 Rechtecke
+            const cornerPoints = new Set(); // Verwendet ein Set, um doppelte Punkte zu vermeiden
+            RECTANGLE_DATA.forEach(data => {
+                const startX = (data.colStart - 1) * gridSize;
+                const startY = (data.rowStart - 1) * gridSize;
+                const endX = (data.colStart + data.colSpan - 1) * gridSize;
+                const endY = (data.rowStart + data.rowSpan - 1) * gridSize;
+
+                // Speichert die vier Ecken jedes Rechtecks
+                cornerPoints.add(`${startX},${startY}`);
+                cornerPoints.add(`${endX},${startY}`);
+                cornerPoints.add(`${startX},${endY}`);
+                cornerPoints.add(`${endX},${endY}`);
+            });
+
+            // 2. Iteriert über alle möglichen Grid-Intersektionen und erstellt die Plus-Symbole
+            for (let r = 0; r <= GRID_ROWS; r++) {
+                for (let c = 0; c <= GRID_COLUMNS; c++) {
+                    const topPos = r * gridSize;
+                    const leftPos = c * gridSize;
+                    const key = `${leftPos},${topPos}`;
+
+                    // Erstellt ein Plus-Symbol für den Hintergrund
+                    const plusBackground = document.createElement('div');
+                    plusBackground.classList.add('plus-icon');
+                    // NEU: Reduzierte Deckkraft für Hintergrund-Symbole
+                    plusBackground.style.opacity = '0.2'; 
+                    plusBackground.style.top = `${topPos}px`;
+                    plusBackground.style.left = `${leftPos}px`;
+                    plusOverlay.appendChild(plusBackground);
+                    
+                    // Überprüft, ob dieser Punkt ein Eckpunkt ist
+                    if (cornerPoints.has(key)) {
+                        // Klonen des Plus-Symbols für den Vordergrund-Layer
+                        const plusForeground = plusBackground.cloneNode();
+                        // NEU: Volle Deckkraft für Vordergrund-Symbole
+                        plusForeground.style.opacity = '1.0'; 
+                        plusFrontLayer.appendChild(plusForeground);
+                    }
+                }
+            }
+        }
+
+
+        /**
+         * Updates the CSS variable for the grid size and adjusts all elements.
+         */
+        function updateGrid(size) {
+            const gridSize = parseInt(size);
+            
+            // 1. Update the CSS variable in real time
+            root.style.setProperty('--grid-size', gridSize + 'px');
+            sizeDisplay.textContent = gridSize;
+
+            // 2. Calculate the new optimal grid dimensions (number of columns/rows)
+            const { gridWidth, gridHeight } = calculateGridDimensions(gridSize);
+            
+            // 3. Render the plus icons in both layers
+            renderPlusIcons(gridWidth, gridHeight, gridSize);
+            
+            // 4. Render/Update the rectangles (jetzt mit neuer gridSize)
+            renderRectangles(gridSize);
+        }
+
+        /**
+         * Initializes the application and sets up event listeners.
+         */
+        function initialize() {
+            // Event listener for the slider (real-time update)
+            slider.addEventListener('input', (event) => {
+                // Throttle the update on input for performance
+                if (this.timeout) clearTimeout(this.timeout);
+                this.timeout = setTimeout(() => {
+                    updateGrid(event.target.value);
+                }, 50); 
+            });
+
+            // Event listener for the regenerate button
+            regenerateButton.addEventListener('click', () => {
+                generateRectangleData(); 
+                // Bei Klick die Rastergröße neu anwenden, was das Morphing auslöst
+                updateGrid(slider.value); 
+            });
+
+            // Initial rendering when the page loads
+            const initialGridSize = slider.value;
+            generateRectangleData(); 
+            updateGrid(initialGridSize); 
+
+            // Adjust the grid on window resize to maintain full screen
+            window.addEventListener('resize', () => {
+                 updateGrid(slider.value);
+            });
+        }
+
+        // Starts the application
+        initialize();
+    </script>
+</body>
+</html>
