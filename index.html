@@ -11,7 +11,8 @@
             --grid-size: 50px; /* Standardgröße der Grid-Zelle */
             --grid-columns: 10; 
             --grid-rows: 8;   
-            --plus-size: 6px; /* Reduzierte Größe der Plus-Symbole */
+            --plus-size: 6px; /* Größe der Hintergrund-Symbole */
+            --plus-size-highlighted: 10px; /* Grösse der VORDERGRUND-Symbole */
             --dark-blue: #0A0A2A; /* Dunkler Hintergrund */
             
             /* NEUE FARBDEFINITIONEN (Vier Cyantöne) */
@@ -66,7 +67,6 @@
         .rectangle {
             position: absolute; 
             opacity: 0.8;
-            border-radius: 4px;
             /* Übergang für das flüssige Morphing über CSS-Transform */
             transition: 
                 transform 500ms ease-in-out, 
@@ -82,14 +82,15 @@
         .color-3 { background-color: var(--color-3); }
         .color-4 { background-color: var(--color-4); }
 
-        /* Container für die festen Plus-Symbole im HINTERGRUND */
-        #plusOverlay {
+        /* NEU: Canvas für das Hintergrundraster (ersetzt #plusOverlay) */
+        #plusCanvas {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%); 
             pointer-events: none; 
             z-index: 5; /* HINTERGRUND */
+            /* Das Zeichnen passiert im JS, nicht hier */
         }
 
         /* Container für die Plus-Symbole an den Eckpunkten (VORDERGRUND) */
@@ -102,18 +103,19 @@
             z-index: 20; /* VORDERGRUND - über den Rechtecken */
         }
 
-        /* Stil für das einzelne Plus-Symbol */
+        /* Stil für das einzelne Plus-Symbol (nur für Vordergrund-Elemente verwendet) */
         .plus-icon {
             position: absolute;
-            width: var(--plus-size);
-            height: var(--plus-size);
+            width: var(--plus-size-highlighted); 
+            height: var(--plus-size-highlighted); 
             /* Erzeugt ein weißes/helles Plus-Symbol */
             background: 
                 linear-gradient(to bottom, var(--plus-color), var(--plus-color)) center no-repeat,
                 linear-gradient(to left, var(--plus-color), var(--plus-color)) center no-repeat;
-            background-size: 1px 100%, 100% 1px; /* 1px dicke Linien für feinere Darstellung */
+            background-size: 2px 100%, 100% 2px; /* Liniendicke auf 2px erhöht */
             transform: translate(-50%, -50%); /* Zentriert den Pluspunkt an seiner Position */
-            transition: all 150ms ease-out; /* Übergang für die Positionierung, falls nötig */
+            transition: all 150ms ease-out, opacity 50ms linear; /* Wichtig: Übergang für das Aufleuchten */
+            opacity: 0.0; /* Startet VERBORGEN für sequentielle Aktivierung */
         }
 
         /* Steuerungselemente unten links - NEUES DESIGN */
@@ -122,7 +124,7 @@
             bottom: 20px;
             left: 20px;
             z-index: 100;
-            background-color: rgba(0, 0, 0, 0.75); /* Schwarz-Transparent */
+            background-color: rgba(0, 0, 0, 0.15); /* SCHWARZ-TRANSPARENT (0.15) */
             padding: 1.5rem; /* Etwas mehr Padding */
             border-radius: 0; /* Keine runden Ecken */
             box-shadow: none; /* Kein Schatten */
@@ -134,7 +136,7 @@
             color: white !important; /* Weiße Typografie */
         }
         
-        /* Slider Track Design (Tailwind classes for range input are inconsistent, so we use custom CSS) */
+        /* Slider Track Design */
         input[type=range]::-webkit-slider-runnable-track {
             background: rgba(255, 255, 255, 0.2); /* Hellerer Track */
             height: 2px;
@@ -147,13 +149,6 @@
             background: var(--color-1); /* Cyan-Farbe für den Thumb */
             margin-top: -6px; /* Zentrieren des Thumbs auf dem Track */
         }
-        /* Button Styling (wird entfernt, aber falls doch benötigt, wäre das das Styling) */
-        .controls button {
-            background-color: rgba(255, 255, 255, 0.1);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 0;
-        }
     </style>
 </head>
 <body>
@@ -162,10 +157,9 @@
         <!-- 1. Grid-Container für die Rechtecke (wird von JS befüllt) --><div id="gridContainer" class="grid-container">
             <!-- Rechtecke werden hier eingefügt --></div>
 
-        <!-- 2. Overlay für die Plus-Symbole im HINTERGRUND (alle Punkte) --><div id="plusOverlay">
-            <!-- Alle Plus-Symbole als Hintergrundraster --></div>
+        <!-- 2. NEU: Canvas für das Hintergrundraster (alle Punkte) --><canvas id="plusCanvas"></canvas>
         
-        <!-- 3. NEU: Overlay für die Plus-Symbole an den Eckpunkten (VORDERGRUND) --><div id="plusFrontLayer">
+        <!-- 3. Overlay für die Plus-Symbole an den Eckpunkten (VORDERGRUND) --><div id="plusFrontLayer">
             <!-- Nur die Eckpunkte der Rechtecke --></div>
     </div>
 
@@ -176,17 +170,12 @@
                 type="range" 
                 id="grid-slider" 
                 min="20" 
-                max="120" 
+                max="250" /* MAXIMALWERT ERHÖHT */
                 value="50" 
                 class="w-full h-2 bg-gray-300 appearance-none cursor-pointer range-lg transition duration-300"
             >
             <span id="grid-size-display" class="ml-3 w-10 text-right font-bold">50</span>
         </div>
-        <!-- Zufällige Neugenerierung durch Klicken auf das Bild ersetzt, Button entfernt. 
-        <button id="regenerate-button" class="mt-4 w-full px-4 py-2 text-sm font-semibold">
-            Zufällige Neugenerierung
-        </button>
-        -->
     </div>
 
     <script>
@@ -197,10 +186,11 @@
         let RECTANGLE_DATA = []; 
         const COLOR_CLASSES = ['color-1', 'color-2', 'color-3', 'color-4']; 
         let currentRectangleElements = []; 
+        let currentMorphTimeout = null; // Speichert den Timeout für das Morphing
 
         const gridWrapper = document.querySelector('.grid-wrapper');
         const gridContainer = document.getElementById('gridContainer');
-        const plusOverlay = document.getElementById('plusOverlay');
+        const plusCanvas = document.getElementById('plusCanvas'); 
         const plusFrontLayer = document.getElementById('plusFrontLayer'); 
         const slider = document.getElementById('grid-slider');
         const sizeDisplay = document.getElementById('grid-size-display');
@@ -234,14 +224,10 @@
 
         /**
          * Generiert genau 4 Rechtecke, die sich an einem zentralen Gitterpunkt treffen (Ecke berühren).
-         * @param {number|null} clickCm - Der Spaltenindex (1-basiert) des Klickpunkts.
-         * @param {number|null} clickRm - Der Zeilenindex (1-basiert) des Klickpunkts.
          */
         function generateRectangleData(clickCm = null, clickRm = null) {
             RECTANGLE_DATA = []; 
 
-            // 1. Definiert den sicheren Bereich für den Mittelpunkt (Cm, Rm)
-            // Cm/Rm muss mindestens 2 sein, um Platz für R1/R3 (links/oben) zu haben
             const minCol = 2; 
             const maxCol = GRID_COLUMNS; 
             const minRow = 2;
@@ -256,8 +242,6 @@
 
             if (clickCm !== null && clickRm !== null) {
                 // Verwende den Klickpunkt, klemme ihn aber an den sicheren Bereich.
-                // Wir verwenden 'maxCol - 1' und 'maxRow - 1', da die Rechtecke rechts/unten (R2/R4) 
-                // mindestens eine Spanne von 1 benötigen, was Cm/Rm bis maxCol-1 zulässt.
                 Cm = Math.max(minCol, Math.min(clickCm, maxCol - 1)); 
                 Rm = Math.max(minRow, Math.min(clickRm, maxRow - 1));
             } else {
@@ -293,8 +277,10 @@
 
         /**
          * Rendert die Rechtecke, indem absolute Pixelwerte und CSS Transform für flüssiges Morphing angewendet werden.
+         * @param {number} gridSize - Aktuelle Grid-Zellengröße in Pixeln.
+         * @param {boolean} immediate - Wenn true, werden CSS-Transitionen temporär deaktiviert.
          */
-        function renderRectangles(gridSize) {
+        function renderRectangles(gridSize, immediate = false) {
             // Initiales Rendern: Erstellt die Rechteck-Elemente, falls sie nicht existieren
             if (currentRectangleElements.length === 0) {
                 gridContainer.innerHTML = ''; 
@@ -308,6 +294,13 @@
                     gridContainer.appendChild(rect);
                     currentRectangleElements.push(rect);
                 }
+                // Beim Initialisieren sollte das Morphing sofort starten
+                immediate = true; 
+            }
+            
+            // Deaktiviert Transitionen temporär, wenn sofortige Aktualisierung gewünscht ist (z.B. bei Resize)
+            if (immediate) {
+                currentRectangleElements.forEach(rect => rect.style.transition = 'none');
             }
 
             // Aktualisiert die vorhandenen Rechteck-Elemente mit neuen Daten
@@ -321,6 +314,7 @@
                     // Berechnet absolute Pixelwerte basierend auf der aktuellen Grid-Größe
                     const pixelWidth = data.colSpan * gridSize;
                     const pixelHeight = data.rowSpan * gridSize;
+                    // colStart/rowStart sind 1-basiert, daher -1 für 0-basierten Startpunkt
                     const pixelX = (data.colStart - 1) * gridSize; 
                     const pixelY = (data.rowStart - 1) * gridSize; 
 
@@ -332,62 +326,113 @@
                     rect.style.transform = `translate(${pixelX}px, ${pixelY}px)`;
                 }
             });
+            
+            // Reaktiviert Transitionen nach kurzer Verzögerung 
+            if (immediate) {
+                setTimeout(() => {
+                    currentRectangleElements.forEach(rect => {
+                        // Setzt die ursprüngliche Transition aus dem CSS (500ms) wieder ein
+                        rect.style.transition = 'transform 500ms ease-in-out, width 500ms ease-in-out, height 500ms ease-in-out, background-color 300ms ease-out';
+                    });
+                }, 50);
+            }
+        }
+        
+        /**
+         * Zeichnet das Hintergrundraster als Plus-Symbole auf das Canvas Element.
+         */
+        function renderCanvasGrid(gridWidth, gridHeight, gridSize) {
+            const ctx = plusCanvas.getContext('2d');
+            
+            // Setzt die Dimensionen des Canvas
+            plusCanvas.width = gridWidth + 1; 
+            plusCanvas.height = gridHeight + 1;
+
+            ctx.clearRect(0, 0, plusCanvas.width, plusCanvas.height);
+
+            // Styling für Hintergrund-Symbole (weiß, transparent, dünn)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)'; // 20% Deckkraft weiß
+            const lineThickness = 1;
+            const plusSize = parseFloat(root.style.getPropertyValue('--plus-size')) || 6;
+
+            // Zeichnet alle Grid-Schnittpunkte
+            for (let r = 0; r <= GRID_ROWS; r++) {
+                for (let c = 0; c <= GRID_COLUMNS; c++) {
+                    const centerX = c * gridSize;
+                    const centerY = r * gridSize;
+
+                    // Zeichnet horizontalen Strich
+                    ctx.fillRect(centerX - plusSize / 2, centerY - lineThickness / 2, plusSize, lineThickness);
+                    
+                    // Zeichnet vertikalen Strich
+                    ctx.fillRect(centerX - lineThickness / 2, centerY - plusSize / 2, lineThickness, plusSize);
+                }
+            }
         }
 
         /**
-         * Rendert die Plus-Symbole in 2 Schichten: Hintergrund und Vordergrund (Ecken).
+         * Rendert die Plus-Symbole an den Eckpunkten der Rechtecke im Vordergrund (DOM-Elemente).
+         * Gibt das Array der erstellten, aber noch unsichtbaren Elemente zurück.
          */
-        function renderPlusIcons(gridWidth, gridHeight, gridSize) {
-            plusOverlay.innerHTML = '';
+        function renderForegroundPlusIcons(gridWidth, gridHeight, gridSize) {
             plusFrontLayer.innerHTML = ''; // Leert den Vordergrund-Layer
             
-            // Setzt die Dimensionen der Overlay-Container für die Zentrierung
-            plusOverlay.style.width = `${gridWidth + 1}px`; 
-            plusOverlay.style.height = `${gridHeight + 1}px`; 
+            // Setzt die Dimensionen des Overlay-Containers für die Zentrierung
             plusFrontLayer.style.width = `${gridWidth + 1}px`; 
             plusFrontLayer.style.height = `${gridHeight + 1}px`; 
 
             // 1. Sammelt alle Eckpunkt-Koordinaten der 4 Rechtecke
-            const cornerPoints = new Set(); // Verwendet ein Set, um doppelte Punkte zu vermeiden
-            RECTANGLE_DATA.forEach(data => {
-                const startX = (data.colStart - 1) * gridSize;
-                const startY = (data.rowStart - 1) * gridSize;
-                const endX = (data.colStart + data.colSpan - 1) * gridSize;
-                const endY = (data.rowStart + data.rowSpan - 1) * gridSize;
+            const cornerPoints = new Set(); 
+            if (RECTANGLE_DATA.length > 0) {
+                 const Cm = RECTANGLE_DATA[1].colStart; 
+                 const Rm = RECTANGLE_DATA[2].rowStart; 
+                 
+                 const pX = (Cm - 1) * gridSize;
+                 const pY = (Rm - 1) * gridSize;
+                 
+                 // Der zentrale Treffpunkt
+                 cornerPoints.add(`${pX},${pY}`);
+                 
+                 // Die 16 Eckpunkte der 4 Rechtecke
+                 RECTANGLE_DATA.forEach(data => {
+                    const startX = (data.colStart - 1) * gridSize;
+                    const startY = (data.rowStart - 1) * gridSize;
+                    const endX = (data.colStart + data.colSpan - 1) * gridSize;
+                    const endY = (data.rowStart + data.rowSpan - 1) * gridSize;
 
-                // Speichert die vier Ecken jedes Rechtecks
-                cornerPoints.add(`${startX},${startY}`);
-                cornerPoints.add(`${endX},${startY}`);
-                cornerPoints.add(`${startX},${endY}`);
-                cornerPoints.add(`${endX},${endY}`);
+                    cornerPoints.add(`${startX},${startY}`);
+                    cornerPoints.add(`${endX},${startY}`);
+                    cornerPoints.add(`${startX},${endY}`);
+                    cornerPoints.add(`${endX},${endY}`);
+                });
+            }
+
+            // 2. Erstellt Plus-Symbole nur für die Eckpunkte (startet unsichtbar durch CSS)
+            const createdIcons = [];
+            cornerPoints.forEach(key => {
+                const [leftPos, topPos] = key.split(',').map(Number);
+
+                const plusForeground = document.createElement('div');
+                plusForeground.classList.add('plus-icon');
+                plusForeground.style.top = `${topPos}px`;
+                plusForeground.style.left = `${leftPos}px`;
+                plusFrontLayer.appendChild(plusForeground);
+                createdIcons.push(plusForeground);
             });
 
-            // 2. Iteriert über alle möglichen Grid-Intersektionen und erstellt die Plus-Symbole
-            for (let r = 0; r <= GRID_ROWS; r++) {
-                for (let c = 0; c <= GRID_COLUMNS; c++) {
-                    const topPos = r * gridSize;
-                    const leftPos = c * gridSize;
-                    const key = `${leftPos},${topPos}`;
+            return createdIcons;
+        }
 
-                    // Erstellt ein Plus-Symbol für den Hintergrund
-                    const plusBackground = document.createElement('div');
-                    plusBackground.classList.add('plus-icon');
-                    // Reduzierte Deckkraft für Hintergrund-Symbole
-                    plusBackground.style.opacity = '0.2'; 
-                    plusBackground.style.top = `${topPos}px`;
-                    plusBackground.style.left = `${leftPos}px`;
-                    plusOverlay.appendChild(plusBackground);
-                    
-                    // Überprüft, ob dieser Punkt ein Eckpunkt ist
-                    if (cornerPoints.has(key)) {
-                        // Klonen des Plus-Symbols für den Vordergrund-Layer
-                        const plusForeground = plusBackground.cloneNode();
-                        // Volle Deckkraft für Vordergrund-Symbole
-                        plusForeground.style.opacity = '1.0'; 
-                        plusFrontLayer.appendChild(plusForeground);
-                    }
-                }
-            }
+        /**
+         * NEU: Lässt die übergebenen Icons nacheinander aufleuchten.
+         */
+        function staggerLightUpIcons(icons) {
+            icons.forEach((icon, index) => {
+                // Staggered timeout: 50ms delay per icon
+                setTimeout(() => {
+                    icon.style.opacity = '1.0';
+                }, index * 50);
+            });
         }
 
 
@@ -404,39 +449,57 @@
             // 2. Berechnet die neuen optimalen Grid-Dimensionen (Anzahl der Spalten/Zeilen)
             const { gridWidth, gridHeight } = calculateGridDimensions(gridSize);
             
-            // 3. Rendert die Plus-Symbole in beiden Schichten
-            renderPlusIcons(gridWidth, gridHeight, gridSize);
+            // 3. Rendert das Hintergrundraster auf dem Canvas (schnell!)
+            renderCanvasGrid(gridWidth, gridHeight, gridSize);
             
-            // 4. Rendert/Aktualisiert die Rechtecke (jetzt mit neuer gridSize)
-            renderRectangles(gridSize);
+            // 4. Rendert die Vordergrund-Plus-Symbole (nur wenige DOM-Elemente)
+            // Bei Slider-Bewegung sollen sie sofort erscheinen (nicht gestaffelt)
+            const icons = renderForegroundPlusIcons(gridWidth, gridHeight, gridSize);
+            icons.forEach(icon => icon.style.opacity = '1.0');
+
+            // 5. Rendert/Aktualisiert die Rechtecke (jetzt mit neuer gridSize).
+            // Bei Slider-Bewegung: immediate = true, da Morphing nicht nötig, aber flüssige Anpassung.
+            renderRectangles(gridSize, true); 
         }
 
         /**
          * Behandelt Klicks auf den Grid-Container, um den neuen Mittelpunkt zu setzen.
          */
         function handleImageClick(event) {
+            // Deaktiviert Klicks, wenn bereits ein Morphing-Timeout läuft
+            if (currentMorphTimeout !== null) return;
+            
             const gridSize = parseInt(slider.value);
             const rect = gridContainer.getBoundingClientRect();
             
-            // Koordinaten relativ zum Grid-Container (0,0 ist oben links des GridContainers)
             const relativeX = event.clientX - rect.left;
             const relativeY = event.clientY - rect.top;
 
-            // Konvertiert in Grid-Schnittpunkt-Indizes (0-basiert)
             let cIndex = Math.round(relativeX / gridSize);
             let rIndex = Math.round(relativeY / gridSize);
 
-            // Stellt sicher, dass der Klickpunkt mindestens 1 Zelle vom Rand entfernt ist,
-            // da die Komposition 4 Quadranten benötigt (Cm, Rm muss mindestens 2 sein).
             cIndex = Math.max(1, Math.min(cIndex, GRID_COLUMNS - 1)); 
             rIndex = Math.max(1, Math.min(rIndex, GRID_ROWS - 1));
 
-            // Die Logik verwendet 1-basierte Indizes:
             const newCm = cIndex + 1;
             const newRm = rIndex + 1;
             
+            // 1. Generiert NEUE Positionen, OHNE sie sofort anzuwenden
             generateRectangleData(newCm, newRm);
-            updateGrid(gridSize);
+            
+            // 2. Rendert die Vordergrund-Plus-Symbole SOFORT (noch unsichtbar)
+            const { gridWidth, gridHeight } = calculateGridDimensions(gridSize);
+            const newIcons = renderForegroundPlusIcons(gridWidth, gridHeight, gridSize);
+            
+            // 3. Startet das sequentielle Aufleuchten
+            staggerLightUpIcons(newIcons);
+
+            // 4. Startet den Morphing-Timeout (1000ms)
+            currentMorphTimeout = setTimeout(() => {
+                // Führt das Morphing aus, indem die neuen Daten angewendet werden
+                renderRectangles(gridSize); 
+                currentMorphTimeout = null; // Setzt den Timeout zurück
+            }, 1000); // 1 Sekunde Verzögerung
         }
 
         /**
@@ -445,14 +508,18 @@
         function initialize() {
             // Event listener für den Slider (Echtzeit-Update ohne Throttling)
             slider.addEventListener('input', (event) => {
+                // Wenn Morphing läuft, sollte der Morphing-Timeout gestoppt werden
+                if (currentMorphTimeout !== null) {
+                    clearTimeout(currentMorphTimeout);
+                    currentMorphTimeout = null;
+                }
                 updateGrid(event.target.value);
             });
             
             // Event listener für Klick in das Bild (neuer Mittelpunkt)
             gridContainer.addEventListener('click', handleImageClick);
 
-            // ZUFÄLLIGE GENERIERUNG WIRD NUR BEIM ERSTEN START VERWENDET
-            // Der Regenerieren-Button ist entfernt, daher keine weitere Logik nötig.
+            // Initiales Rendering beim Laden der Seite
             const initialGridSize = slider.value;
             generateRectangleData(); // Erstmals Daten zufällig generieren
             updateGrid(initialGridSize); 
