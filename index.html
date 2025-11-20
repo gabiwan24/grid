@@ -59,6 +59,7 @@
             width: 100%; 
             height: 100%; 
             z-index: 10; /* Rechtecke liegen VOR dem Haupt-Grid-Overlay */
+            cursor: pointer; /* Visueller Hinweis, dass der Bereich klickbar ist */
         }
 
         /* Basisstil für alle Rechtecke */
@@ -91,7 +92,7 @@
             z-index: 5; /* HINTERGRUND */
         }
 
-        /* NEU: Container für die Plus-Symbole an den Eckpunkten (VORDERGRUND) */
+        /* Container für die Plus-Symbole an den Eckpunkten (VORDERGRUND) */
         #plusFrontLayer {
             position: absolute;
             top: 50%;
@@ -115,17 +116,43 @@
             transition: all 150ms ease-out; /* Übergang für die Positionierung, falls nötig */
         }
 
-        /* Steuerungselemente unten links */
+        /* Steuerungselemente unten links - NEUES DESIGN */
         .controls {
             position: fixed;
             bottom: 20px;
             left: 20px;
             z-index: 100;
-            background-color: rgba(255, 255, 255, 0.9);
-            padding: 1rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            background-color: rgba(0, 0, 0, 0.75); /* Schwarz-Transparent */
+            padding: 1.5rem; /* Etwas mehr Padding */
+            border-radius: 0; /* Keine runden Ecken */
+            box-shadow: none; /* Kein Schatten */
             width: 280px;
+        }
+        
+        /* Styling für Slider und Text im Overlay */
+        .controls label, .controls span {
+            color: white !important; /* Weiße Typografie */
+        }
+        
+        /* Slider Track Design (Tailwind classes for range input are inconsistent, so we use custom CSS) */
+        input[type=range]::-webkit-slider-runnable-track {
+            background: rgba(255, 255, 255, 0.2); /* Hellerer Track */
+            height: 2px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--color-1); /* Cyan-Farbe für den Thumb */
+            margin-top: -6px; /* Zentrieren des Thumbs auf dem Track */
+        }
+        /* Button Styling (wird entfernt, aber falls doch benötigt, wäre das das Styling) */
+        .controls button {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 0;
         }
     </style>
 </head>
@@ -143,7 +170,7 @@
     </div>
 
     <!-- Steuerungselemente unten links --><div class="controls">
-        <label for="grid-slider" class="block text-sm font-medium text-gray-700 mb-2">Rasterweite (px):</label>
+        <label for="grid-slider" class="block text-sm font-medium mb-2">Rasterweite (px):</label>
         <div class="flex items-center">
             <input 
                 type="range" 
@@ -151,13 +178,15 @@
                 min="20" 
                 max="120" 
                 value="50" 
-                class="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer range-lg transition duration-300"
+                class="w-full h-2 bg-gray-300 appearance-none cursor-pointer range-lg transition duration-300"
             >
-            <span id="grid-size-display" class="ml-3 w-10 text-right text-gray-800 font-bold">50</span>
+            <span id="grid-size-display" class="ml-3 w-10 text-right font-bold">50</span>
         </div>
-        <button id="regenerate-button" class="mt-4 w-full px-4 py-2 bg-gray-800 text-white text-sm font-semibold rounded-lg shadow-md hover:bg-gray-700 transition duration-150">
-            Rechtecke neu generieren
+        <!-- Zufällige Neugenerierung durch Klicken auf das Bild ersetzt, Button entfernt. 
+        <button id="regenerate-button" class="mt-4 w-full px-4 py-2 text-sm font-semibold">
+            Zufällige Neugenerierung
         </button>
+        -->
     </div>
 
     <script>
@@ -175,21 +204,20 @@
         const plusFrontLayer = document.getElementById('plusFrontLayer'); 
         const slider = document.getElementById('grid-slider');
         const sizeDisplay = document.getElementById('grid-size-display');
-        const regenerateButton = document.getElementById('regenerate-button');
         const root = document.documentElement;
 
         /**
-         * Calculates the optimal number of columns and rows to fill the screen.
+         * Berechnet die optimale Anzahl von Spalten und Zeilen, um den Bildschirm auszufüllen.
          */
         function calculateGridDimensions(gridSize) {
             const wrapperWidth = gridWrapper.clientWidth;
             const wrapperHeight = gridWrapper.clientHeight;
             
-            // Calculate the maximum possible number of columns and rows
+            // Berechnet die maximal mögliche Anzahl von Spalten und Zeilen (90% des Viewports)
             GRID_COLUMNS = Math.floor((wrapperWidth * 0.9) / gridSize);
             GRID_ROWS = Math.floor((wrapperHeight * 0.9) / gridSize);
             
-            // Maintain at least a 5x5 grid
+            // Behält mindestens ein 5x5-Raster bei
             GRID_COLUMNS = Math.max(5, GRID_COLUMNS);
             GRID_ROWS = Math.max(5, GRID_ROWS);
 
@@ -205,28 +233,42 @@
 
 
         /**
-         * Generates exactly 4 rectangles that meet at a single central grid point (corner touching).
+         * Generiert genau 4 Rechtecke, die sich an einem zentralen Gitterpunkt treffen (Ecke berühren).
+         * @param {number|null} clickCm - Der Spaltenindex (1-basiert) des Klickpunkts.
+         * @param {number|null} clickRm - Der Zeilenindex (1-basiert) des Klickpunkts.
          */
-        function generateRectangleData() {
+        function generateRectangleData(clickCm = null, clickRm = null) {
             RECTANGLE_DATA = []; 
 
-            // 1. Choose a central meeting point (Cm, Rm)
-            const minCol = 3;
-            const maxCol = GRID_COLUMNS - 2;
-            const minRow = 3;
-            const maxRow = GRID_ROWS - 2;
+            // 1. Definiert den sicheren Bereich für den Mittelpunkt (Cm, Rm)
+            // Cm/Rm muss mindestens 2 sein, um Platz für R1/R3 (links/oben) zu haben
+            const minCol = 2; 
+            const maxCol = GRID_COLUMNS; 
+            const minRow = 2;
+            const maxRow = GRID_ROWS;
 
             if (maxCol < minCol || maxRow < minRow) {
                 console.error("Grid is too small to place the 4 meeting rectangles.");
                 return;
             }
 
-            const Cm = Math.floor(Math.random() * (maxCol - minCol + 1)) + minCol;
-            const Rm = Math.floor(Math.random() * (maxRow - minRow + 1)) + minRow;
+            let Cm, Rm;
+
+            if (clickCm !== null && clickRm !== null) {
+                // Verwende den Klickpunkt, klemme ihn aber an den sicheren Bereich.
+                // Wir verwenden 'maxCol - 1' und 'maxRow - 1', da die Rechtecke rechts/unten (R2/R4) 
+                // mindestens eine Spanne von 1 benötigen, was Cm/Rm bis maxCol-1 zulässt.
+                Cm = Math.max(minCol, Math.min(clickCm, maxCol - 1)); 
+                Rm = Math.max(minRow, Math.min(clickRm, maxRow - 1));
+            } else {
+                // Zufällige Initialisierung beim Start
+                Cm = Math.floor(Math.random() * (maxCol - minCol - 1)) + minCol;
+                Rm = Math.floor(Math.random() * (maxRow - minRow - 1)) + minRow;
+            }
 
             const getRandomSpan = (max) => Math.floor(Math.random() * max) + 1; 
 
-            // 2. Define the 4 rectangles relative to (Cm, Rm)
+            // 2. Definiert die 4 Rechtecke relativ zu (Cm, Rm)
             
             // Rectangle 1: Top-Left Quadrant (color-1)
             const colSpan1 = getRandomSpan(Cm - 1); 
@@ -250,10 +292,10 @@
         }
 
         /**
-         * Renders the rectangles by applying absolute pixel values and CSS transform for smooth morphing.
+         * Rendert die Rechtecke, indem absolute Pixelwerte und CSS Transform für flüssiges Morphing angewendet werden.
          */
         function renderRectangles(gridSize) {
-            // Initial render: Create the rectangle elements if they don't exist
+            // Initiales Rendern: Erstellt die Rechteck-Elemente, falls sie nicht existieren
             if (currentRectangleElements.length === 0) {
                 gridContainer.innerHTML = ''; 
                 for (let i = 0; i < NUM_RECTANGLES; i++) {
@@ -268,7 +310,7 @@
                 }
             }
 
-            // Update existing rectangle elements with new data
+            // Aktualisiert die vorhandenen Rechteck-Elemente mit neuen Daten
             RECTANGLE_DATA.forEach((data, index) => {
                 const rect = currentRectangleElements[index];
                 if (rect) {
@@ -276,7 +318,7 @@
                     COLOR_CLASSES.forEach(cls => rect.classList.remove(cls));
                     rect.classList.add(data.colorClass); 
                     
-                    // Berechne absolute Pixelwerte basierend auf der aktuellen Grid-Größe
+                    // Berechnet absolute Pixelwerte basierend auf der aktuellen Grid-Größe
                     const pixelWidth = data.colSpan * gridSize;
                     const pixelHeight = data.rowSpan * gridSize;
                     const pixelX = (data.colStart - 1) * gridSize; 
@@ -293,7 +335,7 @@
         }
 
         /**
-         * Renders the plus icons in 2 layers: one for the background, one for the foreground (corners).
+         * Rendert die Plus-Symbole in 2 Schichten: Hintergrund und Vordergrund (Ecken).
          */
         function renderPlusIcons(gridWidth, gridHeight, gridSize) {
             plusOverlay.innerHTML = '';
@@ -330,7 +372,7 @@
                     // Erstellt ein Plus-Symbol für den Hintergrund
                     const plusBackground = document.createElement('div');
                     plusBackground.classList.add('plus-icon');
-                    // NEU: Reduzierte Deckkraft für Hintergrund-Symbole
+                    // Reduzierte Deckkraft für Hintergrund-Symbole
                     plusBackground.style.opacity = '0.2'; 
                     plusBackground.style.top = `${topPos}px`;
                     plusBackground.style.left = `${leftPos}px`;
@@ -340,7 +382,7 @@
                     if (cornerPoints.has(key)) {
                         // Klonen des Plus-Symbols für den Vordergrund-Layer
                         const plusForeground = plusBackground.cloneNode();
-                        // NEU: Volle Deckkraft für Vordergrund-Symbole
+                        // Volle Deckkraft für Vordergrund-Symbole
                         plusForeground.style.opacity = '1.0'; 
                         plusFrontLayer.appendChild(plusForeground);
                     }
@@ -350,57 +392,78 @@
 
 
         /**
-         * Updates the CSS variable for the grid size and adjusts all elements.
+         * Aktualisiert die CSS-Variable für die Rastergröße und passt alle Elemente an.
          */
         function updateGrid(size) {
             const gridSize = parseInt(size);
             
-            // 1. Update the CSS variable in real time
+            // 1. Aktualisiert die CSS-Variable in Echtzeit
             root.style.setProperty('--grid-size', gridSize + 'px');
             sizeDisplay.textContent = gridSize;
 
-            // 2. Calculate the new optimal grid dimensions (number of columns/rows)
+            // 2. Berechnet die neuen optimalen Grid-Dimensionen (Anzahl der Spalten/Zeilen)
             const { gridWidth, gridHeight } = calculateGridDimensions(gridSize);
             
-            // 3. Render the plus icons in both layers
+            // 3. Rendert die Plus-Symbole in beiden Schichten
             renderPlusIcons(gridWidth, gridHeight, gridSize);
             
-            // 4. Render/Update the rectangles (jetzt mit neuer gridSize)
+            // 4. Rendert/Aktualisiert die Rechtecke (jetzt mit neuer gridSize)
             renderRectangles(gridSize);
         }
 
         /**
-         * Initializes the application and sets up event listeners.
+         * Behandelt Klicks auf den Grid-Container, um den neuen Mittelpunkt zu setzen.
+         */
+        function handleImageClick(event) {
+            const gridSize = parseInt(slider.value);
+            const rect = gridContainer.getBoundingClientRect();
+            
+            // Koordinaten relativ zum Grid-Container (0,0 ist oben links des GridContainers)
+            const relativeX = event.clientX - rect.left;
+            const relativeY = event.clientY - rect.top;
+
+            // Konvertiert in Grid-Schnittpunkt-Indizes (0-basiert)
+            let cIndex = Math.round(relativeX / gridSize);
+            let rIndex = Math.round(relativeY / gridSize);
+
+            // Stellt sicher, dass der Klickpunkt mindestens 1 Zelle vom Rand entfernt ist,
+            // da die Komposition 4 Quadranten benötigt (Cm, Rm muss mindestens 2 sein).
+            cIndex = Math.max(1, Math.min(cIndex, GRID_COLUMNS - 1)); 
+            rIndex = Math.max(1, Math.min(rIndex, GRID_ROWS - 1));
+
+            // Die Logik verwendet 1-basierte Indizes:
+            const newCm = cIndex + 1;
+            const newRm = rIndex + 1;
+            
+            generateRectangleData(newCm, newRm);
+            updateGrid(gridSize);
+        }
+
+        /**
+         * Initialisiert die Anwendung und richtet Event-Listener ein.
          */
         function initialize() {
-            // Event listener for the slider (real-time update)
+            // Event listener für den Slider (Echtzeit-Update ohne Throttling)
             slider.addEventListener('input', (event) => {
-                // Throttle the update on input for performance
-                if (this.timeout) clearTimeout(this.timeout);
-                this.timeout = setTimeout(() => {
-                    updateGrid(event.target.value);
-                }, 50); 
+                updateGrid(event.target.value);
             });
+            
+            // Event listener für Klick in das Bild (neuer Mittelpunkt)
+            gridContainer.addEventListener('click', handleImageClick);
 
-            // Event listener for the regenerate button
-            regenerateButton.addEventListener('click', () => {
-                generateRectangleData(); 
-                // Bei Klick die Rastergröße neu anwenden, was das Morphing auslöst
-                updateGrid(slider.value); 
-            });
-
-            // Initial rendering when the page loads
+            // ZUFÄLLIGE GENERIERUNG WIRD NUR BEIM ERSTEN START VERWENDET
+            // Der Regenerieren-Button ist entfernt, daher keine weitere Logik nötig.
             const initialGridSize = slider.value;
-            generateRectangleData(); 
+            generateRectangleData(); // Erstmals Daten zufällig generieren
             updateGrid(initialGridSize); 
 
-            // Adjust the grid on window resize to maintain full screen
+            // Passt das Grid bei Fenstergröße-Änderung an
             window.addEventListener('resize', () => {
                  updateGrid(slider.value);
             });
         }
 
-        // Starts the application
+        // Startet die Anwendung
         initialize();
     </script>
 </body>
