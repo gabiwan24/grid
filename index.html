@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interaktives Vollbild-Grid</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- KORREKTUR: Tone.js Link auf robustere unpkg Quelle umgestellt -->
-    <script src="https://unpkg.com/tone@14.8.52/build/Tone.js"></script>
     <style>
         /* CSS-Variablen-Definition im Root-Element */
         :root {
@@ -193,8 +191,8 @@
         // Ein kleiner Überlappungswert, um Subpixel-Lücken zu vermeiden.
         const PIXEL_FIX = 1; 
         
-        // Tone.js Synth für den Klick-Sound
-        let synth;
+        // Audio-Logik entfernt.
+        // let synth;
 
         const gridWrapper = document.querySelector('.grid-wrapper');
         const gridContainer = document.getElementById('gridContainer');
@@ -205,41 +203,24 @@
         const root = document.documentElement;
         
         /**
-         * Initialisiert den Tone.js Synth.
+         * Initialisiert den Tone.js Synth. (FUNKTION ENTFERNT)
          */
+        /*
         function initializeAudio() {
-            if (typeof Tone === 'undefined') {
-                console.error("Tone.js konnte nicht geladen werden.");
-                return;
-            }
-            if (synth) return; 
-            
-            // Definiert einen einfachen, kurzen Percussion-Sound (NoiseSynth)
-            synth = new Tone.NoiseSynth({
-                noise: {
-                    type: "white"
-                },
-                envelope: {
-                    attack: 0.001,
-                    decay: 0.05,
-                    sustain: 0.001,
-                    release: 0.05
-                }
-            }).toDestination();
-            
-            if (Tone.context.state !== 'running') {
-                Tone.start();
-            }
+             ...
         }
+        */
         
         /**
-         * Spielt den kurzen Klick-Sound ab.
+         * Spielt den kurzen Klick-Sound ab. (FUNKTION ENTFERNT)
          */
+        /*
         function playClickSound() {
             if (synth) {
                 synth.triggerAttackRelease(0.05); 
             }
         }
+        */
 
 
         /**
@@ -465,13 +446,13 @@
         }
 
         /**
-         * Lässt die Icons nacheinander aufleuchten und spielt Sound ab.
+         * Lässt die Icons nacheinander aufleuchten.
          */
         function staggerLightUpIcons(icons) {
             icons.forEach((icon, index) => {
                 setTimeout(() => {
                     icon.style.opacity = '1.0';
-                    playClickSound(); 
+                    // playClickSound() entfernt
                 }, index * 50);
             });
         }
@@ -500,7 +481,7 @@
          * Behandelt Klicks auf den Grid-Container, um den neuen Mittelpunkt zu setzen.
          */
         function handleImageClick(event) {
-            initializeAudio(); 
+            // initializeAudio() entfernt
             
             if (currentMorphTimeout !== null) return;
             
@@ -542,7 +523,7 @@
         function initialize() {
             // Event listener für den Slider (Echtzeit-Update ohne Throttling)
             slider.addEventListener('input', (event) => {
-                 initializeAudio(); 
+                 // initializeAudio() entfernt
                 
                 if (currentMorphTimeout !== null) {
                     clearTimeout(currentMorphTimeout);
