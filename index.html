@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Interaktives Grid - Pixel Radius</title>
+    <title>Interaktives Grid - Variable Influence</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         :root {
-            --grid-size: 40px; /* Startwert auf 40 geändert */
+            --grid-size: 25px; 
             --grid-columns: 10; 
             --grid-rows: 8;   
             --plus-size: 6px; 
@@ -54,8 +54,6 @@
         
         .grid-container {
             position: relative; 
-            width: 100%; 
-            height: 100%; 
             z-index: 10; 
             cursor: crosshair; 
         }
@@ -67,15 +65,14 @@
             transition: 
                 transform 500ms ease-in-out, 
                 width 500ms ease-in-out,
-                height 500ms ease-in-out,
-                background-color 300ms ease-out; 
+                height 500ms ease-in-out; 
             transform-origin: top left;
         }
 
-        .color-1 { background-color: var(--color-1); }
-        .color-2 { background-color: var(--color-2); }
-        .color-3 { background-color: var(--color-3); }
-        .color-4 { background-color: var(--color-4); }
+        .color-1 { --bg-color: var(--color-1); }
+        .color-2 { --bg-color: var(--color-2); }
+        .color-3 { --bg-color: var(--color-3); }
+        .color-4 { --bg-color: var(--color-4); }
 
         #plusCanvas {
             position: absolute;
@@ -114,7 +111,7 @@
             background-color: rgba(255, 255, 255, 0.05);
             border-radius: 50%;
             pointer-events: none;
-            z-index: 15;
+            z-index: 50; 
             display: none; 
             transform: translate(-50%, -50%); 
         }
@@ -127,7 +124,7 @@
             border-radius: 50%;
             transform: translate(-50%, -50%);
             pointer-events: none;
-            z-index: 25; 
+            z-index: 55; 
             display: none;
             box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
         }
@@ -138,7 +135,7 @@
             background-color: rgba(255, 255, 255, 0.6);
             transform-origin: left center; 
             pointer-events: none;
-            z-index: 25;
+            z-index: 55;
             display: none;
         }
 
@@ -194,7 +191,6 @@
         <canvas id="plusCanvas"></canvas>
         <div id="plusFrontLayer"></div>
         
-        <!-- Drag Visuals -->
         <div id="dragCircle"></div>
         <div id="dragCenterDot"></div>
         <div id="dragLine"></div>
@@ -213,10 +209,10 @@
                 id="grid-slider" 
                 min="20" 
                 max="250" 
-                value="40" 
+                value="25" 
                 class="w-full h-2 bg-gray-300 appearance-none cursor-pointer range-lg transition duration-300"
             >
-            <span id="grid-size-display" class="ml-3 w-10 text-right font-bold">40</span>
+            <span id="grid-size-display" class="ml-3 w-10 text-right font-bold">25</span>
         </div>
     </div>
 
@@ -231,7 +227,7 @@
         let currentMorphTimeout = null; 
         const PIXEL_FIX = 1; 
 
-        // State für Drag-Geste
+        // State
         let isDragging = false;
         let dragStartX = 0;
         let dragStartY = 0;
@@ -240,21 +236,20 @@
         let currentRadiusPx = 0;
         let previewRectangleData = [];
         
-        // Stabilisierung der Zufallswerte
-        let fixedDragAngles = null; 
+        // Seeds für die Formgenerierung
+        let fixedRandomSeeds = null; 
         let lastRenderedSignature = ''; 
+        let lastDragAngle = 0; 
 
         const gridWrapper = document.querySelector('.grid-wrapper');
         const gridContainer = document.getElementById('gridContainer');
         const plusCanvas = document.getElementById('plusCanvas'); 
         const plusFrontLayer = document.getElementById('plusFrontLayer'); 
         
-        // Visual Feedback Elements
         const dragCircle = document.getElementById('dragCircle');
         const dragCenterDot = document.getElementById('dragCenterDot');
         const dragLine = document.getElementById('dragLine');
         
-        // Stats Elements
         const statsDisplay = document.getElementById('statsDisplay');
         const statRadius = document.getElementById('stat-radius');
         const statPlusses = document.getElementById('stat-plusses');
@@ -283,9 +278,9 @@
         }
 
         /**
-         * Circle-Edge Algorithmus (Strict) mit stabilisierten Winkeln.
+         * Circle-Edge Algorithmus mit variabler, individueller Richtungsabhängigkeit.
          */
-        function generateRectangleData(centerCol, centerRow, radiusGridUnits = null, customAngles = null) {
+        function generateRectangleData(centerCol, centerRow, radiusGridUnits = null, seeds = null, dragAngle = 0) {
             const resultData = []; 
 
             const minCol = 2; 
@@ -306,13 +301,25 @@
                 { id: 3, dx: 1, dy: 1, color: COLOR_CLASSES[3] } 
             ];
 
+            // Zielwinkel basierend auf Ziehrichtung
+            const biasTarget = Math.abs(Math.sin(dragAngle)) * (Math.PI / 2);
+
             quadrants.forEach((q, index) => {
-                const angle = (customAngles && customAngles[index] !== undefined) 
-                              ? customAngles[index] 
-                              : Math.random() * (Math.PI / 2);
+                // Basis-Zufall
+                const seed = (seeds && seeds[index] !== undefined) ? seeds[index] : Math.random();
+                const baseRandomAngle = seed * (Math.PI / 2);
                 
-                let colSpan = Math.floor(Math.abs(Math.cos(angle) * effectiveRadius));
-                let rowSpan = Math.floor(Math.abs(Math.sin(angle) * effectiveRadius));
+                // --- NEU: INDIVIDUELLE BEEINFLUSSBARKEIT ---
+                // Manche Elemente hören stark auf den Ziehwinkel (susceptibility ~ 0.8), 
+                // andere sind stur und bleiben eher beim Zufall (susceptibility ~ 0.2).
+                // Wir leiten das deterministisch aus dem Seed ab.
+                const susceptibility = ((seed * 9301 + 49297) % 1000) / 1000 * 0.6 + 0.2; // Range 0.2 bis 0.8
+
+                // Mix
+                const mixedAngle = baseRandomAngle + (biasTarget - baseRandomAngle) * susceptibility;
+                
+                let colSpan = Math.floor(Math.abs(Math.cos(mixedAngle) * effectiveRadius));
+                let rowSpan = Math.floor(Math.abs(Math.sin(mixedAngle) * effectiveRadius));
 
                 if (effectiveRadius === 2) {
                     colSpan = 1;
@@ -331,23 +338,10 @@
                 else rowStart = Rm;
 
                 // Clipping
-                if (colStart < 1) {
-                    const diff = 1 - colStart;
-                    colStart = 1;
-                    colSpan -= diff;
-                }
-                if (colStart + colSpan > GRID_COLUMNS + 1) {
-                    colSpan = (GRID_COLUMNS + 1) - colStart;
-                }
-
-                if (rowStart < 1) {
-                    const diff = 1 - rowStart;
-                    rowStart = 1;
-                    rowSpan -= diff;
-                }
-                if (rowStart + rowSpan > GRID_ROWS + 1) {
-                    rowSpan = (GRID_ROWS + 1) - rowStart;
-                }
+                if (colStart < 1) { const diff = 1 - colStart; colStart = 1; colSpan -= diff; }
+                if (colStart + colSpan > GRID_COLUMNS + 1) { colSpan = (GRID_COLUMNS + 1) - colStart; }
+                if (rowStart < 1) { const diff = 1 - rowStart; rowStart = 1; rowSpan -= diff; }
+                if (rowStart + rowSpan > GRID_ROWS + 1) { rowSpan = (GRID_ROWS + 1) - rowStart; }
 
                 if (colSpan > 0 && rowSpan > 0) {
                     resultData.push({
@@ -361,24 +355,44 @@
                 }
             });
 
+            // Anti-Pinwheel (bleibt als Sicherheitsnetz)
+            if (resultData.length === 4) {
+                const r0 = resultData[0]; const r1 = resultData[1];
+                const r2 = resultData[2]; const r3 = resultData[3];
+                const isV = (r) => r.rowSpan > r.colSpan;
+                const isH = (r) => r.colSpan > r.rowSpan;
+                const isPinwheel1 = isV(r0) && isH(r1) && isH(r2) && isV(r3);
+                const isPinwheel2 = isH(r0) && isV(r1) && isV(r2) && isH(r3);
+
+                if (isPinwheel1 || isPinwheel2) {
+                    const temp = r3.colSpan; r3.colSpan = r3.rowSpan; r3.rowSpan = temp;
+                }
+            }
+
+            // Symmetrie-Brecher (bleibt)
+            if (resultData.length === 4) {
+                const pointCount = getCoveredGridPoints(resultData, 1).size;
+                if (pointCount > 9) {
+                    const r0 = resultData[0];
+                    const isFullSymmetric = resultData.every(r => r.colSpan === r0.colSpan && r.rowSpan === r0.rowSpan);
+                    if (isFullSymmetric) {
+                        const lastRect = resultData[3];
+                        if (lastRect.colSpan > 1) lastRect.colSpan -= 1;
+                        else if (lastRect.rowSpan > 1) lastRect.rowSpan -= 1;
+                    }
+                }
+            }
             return resultData;
         }
 
-        /**
-         * Sammelt ALLE Gitterpunkte für die Statistik (Anzahl).
-         */
         function getCoveredGridPoints(rectData, gridSize) {
             if (!rectData || rectData.length === 0) return new Set();
-            
             const points = new Set();
-            
             rectData.forEach(data => {
                 const startColIndex = data.colStart - 1;
                 const endColIndex = data.colStart - 1 + data.colSpan;
-                
                 const startRowIndex = data.rowStart - 1;
                 const endRowIndex = data.rowStart - 1 + data.rowSpan;
-
                 for (let c = startColIndex; c <= endColIndex; c++) {
                     for (let r = startRowIndex; r <= endRowIndex; r++) {
                         const pixelX = c * gridSize;
@@ -387,7 +401,6 @@
                     }
                 }
             });
-            
             return points;
         }
 
@@ -397,8 +410,7 @@
                 for (let i = 0; i < NUM_RECTANGLES; i++) {
                     const rect = document.createElement('div');
                     rect.classList.add('rectangle');
-                    rect.style.width = '0px'; 
-                    rect.style.height = '0px'; 
+                    rect.style.width = '0px'; rect.style.height = '0px'; 
                     rect.style.transform = 'translate(0px, 0px)';
                     gridContainer.appendChild(rect);
                     currentRectangleElements.push(rect);
@@ -419,6 +431,14 @@
                     COLOR_CLASSES.forEach(cls => rect.classList.remove(cls));
                     rect.classList.add(data.colorClass); 
                     
+                    let gradientPos = '';
+                    if (data.id === 0) gradientPos = 'bottom right';
+                    else if (data.id === 1) gradientPos = 'bottom left';
+                    else if (data.id === 2) gradientPos = 'top right';
+                    else if (data.id === 3) gradientPos = 'top left';
+
+                    rect.style.background = `radial-gradient(circle at ${gradientPos}, var(--bg-color) 20%, transparent 100%)`;
+
                     if (!immediate) {
                         rect.style.transitionDelay = `${index * 30}ms`;
                     } else {
@@ -429,10 +449,8 @@
                     const pixelHeight = data.rowSpan * gridSize;
                     let pixelX = (data.colStart - 1) * gridSize; 
                     let pixelY = (data.rowStart - 1) * gridSize; 
-                    
                     const fixedWidth = pixelWidth + PIXEL_FIX;
                     const fixedHeight = pixelHeight + PIXEL_FIX;
-                    
                     if (data.colStart > 1) pixelX -= PIXEL_FIX;
                     if (data.rowStart > 1) pixelY -= PIXEL_FIX;
 
@@ -445,15 +463,13 @@
             if (immediate) {
                 setTimeout(() => {
                     currentRectangleElements.forEach(rect => {
-                        rect.style.transition = 'transform 500ms ease-in-out, width 500ms ease-in-out, height 500ms ease-in-out, background-color 300ms ease-out';
+                        rect.style.transition = 'transform 500ms ease-in-out, width 500ms ease-in-out, height 500ms ease-in-out';
                         rect.style.transitionDelay = '0ms'; 
                     });
                 }, 50);
             } else {
                 setTimeout(() => {
-                    currentRectangleElements.forEach(rect => {
-                        rect.style.transitionDelay = '0ms';
-                    });
+                    currentRectangleElements.forEach(rect => { rect.style.transitionDelay = '0ms'; });
                 }, 1000);
             }
         }
@@ -491,7 +507,6 @@
                 const startY = (data.rowStart - 1) * gridSize;
                 const endX = (data.colStart + data.colSpan - 1) * gridSize;
                 const endY = (data.rowStart + data.rowSpan - 1) * gridSize;
-                
                 cornerPoints.add(`${startX},${startY}`);
                 cornerPoints.add(`${endX},${startY}`);
                 cornerPoints.add(`${startX},${endY}`);
@@ -505,15 +520,10 @@
                 plusForeground.classList.add('plus-icon');
                 plusForeground.style.top = `${topPos}px`;
                 plusForeground.style.left = `${leftPos}px`;
-                
-                if (customData) {
-                    plusForeground.style.opacity = '1.0';
-                }
-                
+                if (customData) plusForeground.style.opacity = '1.0';
                 plusFrontLayer.appendChild(plusForeground);
                 createdIcons.push(plusForeground);
             });
-
             return createdIcons;
         }
 
@@ -536,12 +546,9 @@
             renderRectangles(gridSize, true); 
         }
 
-        // --- INTERAKTIONSHANDLER ---
-
         function getEventPos(e) {
             const rect = gridContainer.getBoundingClientRect();
             let clientX, clientY;
-            
             if (e.touches && e.touches.length > 0) {
                 clientX = e.touches[0].clientX;
                 clientY = e.touches[0].clientY;
@@ -549,7 +556,6 @@
                 clientX = e.clientX;
                 clientY = e.clientY;
             }
-            
             return {
                 x: clientX - rect.left,
                 y: clientY - rect.top
@@ -561,7 +567,7 @@
             if(e.type === 'touchstart') e.preventDefault();
 
             const gridSize = parseInt(slider.value);
-            const pos = getEventPos(e);
+            const pos = getEventPos(e); 
 
             let cIndex = Math.round(pos.x / gridSize);
             let rIndex = Math.round(pos.y / gridSize);
@@ -572,34 +578,48 @@
             dragCenterCol = cIndex + 1;
             dragCenterRow = rIndex + 1;
 
-            dragStartX = cIndex * gridSize;
-            dragStartY = rIndex * gridSize;
+            let clientX, clientY;
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+            dragStartX = clientX;
+            dragStartY = clientY;
 
             isDragging = true;
             currentRadiusPx = 0;
             previewRectangleData = [];
             
-            fixedDragAngles = [
-                Math.random() * (Math.PI / 2),
-                Math.random() * (Math.PI / 2),
-                Math.random() * (Math.PI / 2),
-                Math.random() * (Math.PI / 2)
+            fixedRandomSeeds = [
+                Math.random(),
+                Math.random(),
+                Math.random(),
+                Math.random()
             ];
             lastRenderedSignature = ''; 
+            lastDragAngle = 0; 
 
             dragCircle.style.display = 'block';
             dragCircle.style.width = '0px';
             dragCircle.style.height = '0px';
-            dragCircle.style.left = `${dragStartX}px`;
-            dragCircle.style.top = `${dragStartY}px`;
+            
+            const rect = gridContainer.getBoundingClientRect();
+            const visualStartX = rect.left + (cIndex * gridSize);
+            const visualStartY = rect.top + (rIndex * gridSize);
+            
+            dragCircle.style.left = `${visualStartX}px`;
+            dragCircle.style.top = `${visualStartY}px`;
 
             dragCenterDot.style.display = 'block';
-            dragCenterDot.style.left = `${dragStartX}px`;
-            dragCenterDot.style.top = `${dragStartY}px`;
+            dragCenterDot.style.left = `${visualStartX}px`;
+            dragCenterDot.style.top = `${visualStartY}px`;
 
             dragLine.style.display = 'block';
-            dragLine.style.left = `${dragStartX}px`;
-            dragLine.style.top = `${dragStartY}px`;
+            dragLine.style.left = `${visualStartX}px`;
+            dragLine.style.top = `${visualStartY}px`;
             dragLine.style.width = '0px';
 
             statsDisplay.style.display = 'block';
@@ -611,12 +631,20 @@
             if (!isDragging) return;
             if(e.type === 'touchmove') e.preventDefault();
 
-            const pos = getEventPos(e);
+            let clientX, clientY;
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+
             const gridSize = parseInt(slider.value);
             const { gridWidth, gridHeight } = calculateGridDimensions(gridSize);
             
-            const dx = pos.x - dragStartX;
-            const dy = pos.y - dragStartY;
+            const dx = clientX - dragStartX;
+            const dy = clientY - dragStartY;
             currentRadiusPx = Math.sqrt(dx*dx + dy*dy);
 
             const diameter = currentRadiusPx * 2;
@@ -626,26 +654,24 @@
             const angle = Math.atan2(dy, dx);
             dragLine.style.width = `${currentRadiusPx}px`;
             dragLine.style.transform = `rotate(${angle}rad)`;
+            
+            lastDragAngle = angle;
 
-            // --- STATS & LIVE PREVIEW ---
             const radiusInGridUnits = Math.floor(currentRadiusPx / gridSize);
             statRadius.innerText = Math.round(currentRadiusPx) + "px";
 
             if (radiusInGridUnits >= 2) {
-                previewRectangleData = generateRectangleData(dragCenterCol, dragCenterRow, radiusInGridUnits, fixedDragAngles);
+                previewRectangleData = generateRectangleData(dragCenterCol, dragCenterRow, radiusInGridUnits, fixedRandomSeeds, angle);
                 
                 const currentSignature = JSON.stringify(previewRectangleData);
                 if (currentSignature !== lastRenderedSignature) {
-                    
                     const coveredPoints = getCoveredGridPoints(previewRectangleData, gridSize);
                     statPlusses.innerText = coveredPoints.size;
                     statPlusses.style.color = "#fff"; 
 
                     renderForegroundPlusIcons(gridWidth, gridHeight, gridSize, previewRectangleData);
-                    
                     lastRenderedSignature = currentSignature;
                 }
-
             } else {
                 statPlusses.innerText = "0";
                 statPlusses.style.color = "#aaa"; 
@@ -692,11 +718,11 @@
                 updateGrid(event.target.value);
             });
             
-            gridContainer.addEventListener('mousedown', handleStart);
+            gridWrapper.addEventListener('mousedown', handleStart);
             window.addEventListener('mousemove', handleMove); 
             window.addEventListener('mouseup', handleEnd);
 
-            gridContainer.addEventListener('touchstart', handleStart, {passive: false});
+            gridWrapper.addEventListener('touchstart', handleStart, {passive: false});
             window.addEventListener('touchmove', handleMove, {passive: false});
             window.addEventListener('touchend', handleEnd);
 
