@@ -2,35 +2,33 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interaktives Vollbild-Grid</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Interaktives Grid - Pixel Radius</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* CSS-Variablen-Definition im Root-Element */
         :root {
-            --grid-size: 50px; /* Standardgröße der Grid-Zelle */
+            --grid-size: 40px; /* Startwert auf 40 geändert */
             --grid-columns: 10; 
             --grid-rows: 8;   
-            --plus-size: 6px; /* Größe der Hintergrund-Symbole */
-            --plus-size-highlighted: 10px; /* Grösse der VORDERGRUND-Symbole */
-            --dark-blue: #0A0A2A; /* Dunkler Hintergrund */
+            --plus-size: 6px; 
+            --plus-size-highlighted: 10px; 
+            --dark-blue: #0A0A2A; 
             
-            /* NEUE FARBDEFINITIONEN (Vier Cyantöne) */
-            --color-1: #00FFFF;  /* Aqua/Hell-Cyan */
-            --color-2: #40E0D0;  /* Türkis/Medium-Cyan */
-            --color-3: #00CED1;  /* DarkTurquoise/Dunkleres Cyan */
-            --color-4: #20B2AA;  /* LightSeaGreen/Grünliches Cyan */
+            --color-1: #00FFFF;  
+            --color-2: #40E0D0;  
+            --color-3: #00CED1;  
+            --color-4: #20B2AA;  
 
-            --plus-color: #FFFFFF; /* Farbe der Plus-Symbole */
+            --plus-color: #FFFFFF; 
         }
 
-        /* Vollbild- und Randabfallende Darstellung */
         html, body {
             margin: 0;
             padding: 0;
             height: 100%;
             width: 100%;
-            overflow: hidden; /* Verhindert Scrollbalken */
+            overflow: hidden;
+            touch-action: none; 
         }
 
         body {
@@ -40,9 +38,9 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
+            user-select: none; 
         }
 
-        /* Haupt-Grid-Container (nimmt den gesamten verfügbaren Platz ein) */
         .grid-wrapper {
             position: absolute;
             top: 0;
@@ -54,21 +52,18 @@
             align-items: center;
         }
         
-        /* Das eigentliche Grid für die Rechtecke */
         .grid-container {
             position: relative; 
             width: 100%; 
             height: 100%; 
-            z-index: 10; /* Rechtecke liegen VOR dem Haupt-Grid-Overlay */
-            cursor: pointer; /* Visueller Hinweis, dass der Bereich klickbar ist */
+            z-index: 10; 
+            cursor: crosshair; 
         }
 
-        /* Basisstil für alle Rechtecke */
         .rectangle {
             position: absolute; 
-            opacity: 1.0; /* Voll deckend (1.0) zur Vermeidung heller Ränder */
-            border-radius: 0; /* Keine runden Ecken */
-            /* Übergang für das flüssige Morphing über CSS-Transform */
+            opacity: 1.0; 
+            border-radius: 0; 
             transition: 
                 transform 500ms ease-in-out, 
                 width 500ms ease-in-out,
@@ -77,66 +72,107 @@
             transform-origin: top left;
         }
 
-        /* Spezifische Klassen für die vier Farben */
         .color-1 { background-color: var(--color-1); }
         .color-2 { background-color: var(--color-2); }
         .color-3 { background-color: var(--color-3); }
         .color-4 { background-color: var(--color-4); }
 
-        /* NEU: Canvas für das Hintergrundraster (alle Punkte, hohe Performance) */
         #plusCanvas {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%); 
             pointer-events: none; 
-            z-index: 5; /* HINTERGRUND */
+            z-index: 5; 
         }
 
-        /* Container für die Plus-Symbole an den Eckpunkten (VORDERGRUND) */
         #plusFrontLayer {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%); 
             pointer-events: none; 
-            z-index: 20; /* VORDERGRUND - über den Rechtecken */
+            z-index: 20; 
         }
 
-        /* Stil für das einzelne Plus-Symbol (nur für Vordergrund-Elemente verwendet) */
         .plus-icon {
             position: absolute;
             width: var(--plus-size-highlighted); 
             height: var(--plus-size-highlighted); 
-            /* Erzeugt ein weißes/helles Plus-Symbol */
             background: 
                 linear-gradient(to bottom, var(--plus-color), var(--plus-color)) center no-repeat,
                 linear-gradient(to left, var(--plus-color), var(--plus-color)) center no-repeat;
-            background-size: 2px 100%, 100% 2px; /* Liniendicke auf 2px (doppelt) erhöht */
-            transform: translate(-50%, -50%); /* Zentriert den Pluspunkt an seiner Position */
-            transition: all 150ms ease-out, opacity 50ms linear; /* Wichtig: Übergang für das Aufleuchten */
-            opacity: 0.0; /* Startet VERBORGEN für sequentielle Aktivierung */
+            background-size: 2px 100%, 100% 2px; 
+            transform: translate(-50%, -50%); 
+            transition: all 150ms ease-out, opacity 50ms linear; 
+            opacity: 0.0; 
         }
 
-        /* Steuerungselemente unten links - SCHWARZ-TRANSPARENTES RECHTECK */
+        #dragCircle {
+            position: absolute;
+            border: 1px dashed rgba(255, 255, 255, 0.6);
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 15;
+            display: none; 
+            transform: translate(-50%, -50%); 
+        }
+
+        #dragCenterDot {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            background-color: white;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 25; 
+            display: none;
+            box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
+        }
+
+        #dragLine {
+            position: absolute;
+            height: 1px; 
+            background-color: rgba(255, 255, 255, 0.6);
+            transform-origin: left center; 
+            pointer-events: none;
+            z-index: 25;
+            display: none;
+        }
+
+        #statsDisplay {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            color: rgba(255, 255, 255, 0.8);
+            font-family: 'Inter', monospace;
+            font-size: 14px;
+            pointer-events: none;
+            display: none; 
+            background-color: rgba(0, 0, 0, 0.3);
+            padding: 8px 12px;
+            border-radius: 4px;
+        }
+
         .controls {
             position: fixed;
             bottom: 20px;
             left: 20px;
             z-index: 100;
-            background-color: rgba(0, 0, 0, 0.15); /* SCHWARZ-TRANSPARENT (0.15) */
+            background-color: rgba(0, 0, 0, 0.15); 
             padding: 1.5rem; 
-            border-radius: 0; /* Keine runden Ecken */
+            border-radius: 0; 
             box-shadow: none; 
             width: 280px;
         }
         
-        /* Styling für Slider und Text im Overlay */
         .controls label, .controls span {
-            color: white !important; /* Weiße Typografie */
+            color: white !important; 
         }
         
-        /* Slider Track Design */
         input[type=range]::-webkit-slider-runnable-track {
             background: rgba(255, 255, 255, 0.2); 
             height: 2px;
@@ -153,17 +189,23 @@
 </head>
 <body>
 
-    <!-- Vollbild-Wrapper für das Grid und die Plus-Symbole --><div class="grid-wrapper">
-        <!-- 1. Grid-Container für die Rechtecke (wird von JS befüllt) --><div id="gridContainer" class="grid-container">
-            <!-- Rechtecke werden hier eingefügt --></div>
-
-        <!-- 2. Canvas für das Hintergrundraster (alle Punkte) --><canvas id="plusCanvas"></canvas>
+    <div class="grid-wrapper">
+        <div id="gridContainer" class="grid-container"></div>
+        <canvas id="plusCanvas"></canvas>
+        <div id="plusFrontLayer"></div>
         
-        <!-- 3. Overlay für die Plus-Symbole an den Eckpunkten (VORDERGRUND) --><div id="plusFrontLayer">
-            <!-- Nur die Eckpunkte der Rechtecke --></div>
+        <!-- Drag Visuals -->
+        <div id="dragCircle"></div>
+        <div id="dragCenterDot"></div>
+        <div id="dragLine"></div>
     </div>
 
-    <!-- Steuerungselemente unten links --><div class="controls">
+    <div id="statsDisplay">
+        Radius: <span id="stat-radius" class="font-bold text-white">0px</span> | 
+        Elemente: <span id="stat-plusses" class="font-bold text-white">0</span>
+    </div>
+
+    <div class="controls">
         <label for="grid-slider" class="block text-sm font-medium mb-2">Rasterweite (px):</label>
         <div class="flex items-center">
             <input 
@@ -171,15 +213,15 @@
                 id="grid-slider" 
                 min="20" 
                 max="250" 
-                value="50" 
+                value="40" 
                 class="w-full h-2 bg-gray-300 appearance-none cursor-pointer range-lg transition duration-300"
             >
-            <span id="grid-size-display" class="ml-3 w-10 text-right font-bold">50</span>
+            <span id="grid-size-display" class="ml-3 w-10 text-right font-bold">40</span>
         </div>
     </div>
 
     <script>
-        // Initial values
+        // Globals
         let GRID_COLUMNS = 10;
         let GRID_ROWS = 8;
         const NUM_RECTANGLES = 4;
@@ -187,45 +229,40 @@
         const COLOR_CLASSES = ['color-1', 'color-2', 'color-3', 'color-4']; 
         let currentRectangleElements = []; 
         let currentMorphTimeout = null; 
-        
-        // Ein kleiner Überlappungswert, um Subpixel-Lücken zu vermeiden.
         const PIXEL_FIX = 1; 
+
+        // State für Drag-Geste
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        let dragCenterCol = 0; 
+        let dragCenterRow = 0;
+        let currentRadiusPx = 0;
+        let previewRectangleData = [];
         
-        // Audio-Logik entfernt.
-        // let synth;
+        // Stabilisierung der Zufallswerte
+        let fixedDragAngles = null; 
+        let lastRenderedSignature = ''; 
 
         const gridWrapper = document.querySelector('.grid-wrapper');
         const gridContainer = document.getElementById('gridContainer');
         const plusCanvas = document.getElementById('plusCanvas'); 
         const plusFrontLayer = document.getElementById('plusFrontLayer'); 
+        
+        // Visual Feedback Elements
+        const dragCircle = document.getElementById('dragCircle');
+        const dragCenterDot = document.getElementById('dragCenterDot');
+        const dragLine = document.getElementById('dragLine');
+        
+        // Stats Elements
+        const statsDisplay = document.getElementById('statsDisplay');
+        const statRadius = document.getElementById('stat-radius');
+        const statPlusses = document.getElementById('stat-plusses');
+
         const slider = document.getElementById('grid-slider');
         const sizeDisplay = document.getElementById('grid-size-display');
         const root = document.documentElement;
-        
-        /**
-         * Initialisiert den Tone.js Synth. (FUNKTION ENTFERNT)
-         */
-        /*
-        function initializeAudio() {
-             ...
-        }
-        */
-        
-        /**
-         * Spielt den kurzen Klick-Sound ab. (FUNKTION ENTFERNT)
-         */
-        /*
-        function playClickSound() {
-            if (synth) {
-                synth.triggerAttackRelease(0.05); 
-            }
-        }
-        */
 
-
-        /**
-         * Berechnet die optimale Anzahl von Spalten und Zeilen, um den Bildschirm auszufüllen.
-         */
         function calculateGridDimensions(gridSize) {
             const wrapperWidth = gridWrapper.clientWidth;
             const wrapperHeight = gridWrapper.clientHeight;
@@ -245,64 +282,116 @@
             return { gridWidth, gridHeight };
         }
 
-
         /**
-         * Generiert genau 4 Rechtecke, die sich an einem zentralen Gitterpunkt treffen.
+         * Circle-Edge Algorithmus (Strict) mit stabilisierten Winkeln.
          */
-        function generateRectangleData(clickCm = null, clickRm = null) {
-            RECTANGLE_DATA = []; 
+        function generateRectangleData(centerCol, centerRow, radiusGridUnits = null, customAngles = null) {
+            const resultData = []; 
 
             const minCol = 2; 
             const maxCol = GRID_COLUMNS; 
             const minRow = 2;
             const maxRow = GRID_ROWS;
 
-            if (maxCol < minCol || maxRow < minRow) {
-                console.error("Grid is too small to place the 4 meeting rectangles.");
-                return;
-            }
+            const Cm = Math.max(minCol, Math.min(centerCol, maxCol - 1)); 
+            const Rm = Math.max(minRow, Math.min(centerRow, maxRow - 1));
 
-            let Cm, Rm;
+            let effectiveRadius = radiusGridUnits;
+            if (effectiveRadius === null) effectiveRadius = 0;
 
-            if (clickCm !== null && clickRm !== null) {
-                Cm = Math.max(minCol, Math.min(clickCm, maxCol - 1)); 
-                Rm = Math.max(minRow, Math.min(clickRm, maxRow - 1));
-            } else {
-                // Zufällige Initialisierung beim Start
-                Cm = Math.floor(Math.random() * (maxCol - minCol - 1)) + minCol;
-                Rm = Math.floor(Math.random() * (maxRow - minRow - 1)) + minRow;
-            }
+            const quadrants = [
+                { id: 0, dx: -1, dy: -1, color: COLOR_CLASSES[0] }, 
+                { id: 1, dx: 1, dy: -1, color: COLOR_CLASSES[1] }, 
+                { id: 2, dx: -1, dy: 1, color: COLOR_CLASSES[2] }, 
+                { id: 3, dx: 1, dy: 1, color: COLOR_CLASSES[3] } 
+            ];
 
-            const getRandomSpan = (max) => Math.floor(Math.random() * max) + 1; 
+            quadrants.forEach((q, index) => {
+                const angle = (customAngles && customAngles[index] !== undefined) 
+                              ? customAngles[index] 
+                              : Math.random() * (Math.PI / 2);
+                
+                let colSpan = Math.floor(Math.abs(Math.cos(angle) * effectiveRadius));
+                let rowSpan = Math.floor(Math.abs(Math.sin(angle) * effectiveRadius));
 
-            // Definiert die 4 Rechtecke relativ zu (Cm, Rm)
-            
-            // Rectangle 1: Top-Left Quadrant (color-1)
-            const colSpan1 = getRandomSpan(Cm - 1); 
-            const rowSpan1 = getRandomSpan(Rm - 1); 
-            RECTANGLE_DATA.push({ id: 0, colStart: Cm - colSpan1, rowStart: Rm - rowSpan1, colSpan: colSpan1, rowSpan: rowSpan1, colorClass: COLOR_CLASSES[0] });
+                if (effectiveRadius === 2) {
+                    colSpan = 1;
+                    rowSpan = 1;
+                }
 
-            // Rectangle 2: Top-Right Quadrant (color-2)
-            const colSpan2 = getRandomSpan(GRID_COLUMNS - Cm); 
-            const rowSpan2 = getRandomSpan(Rm - 1); 
-            RECTANGLE_DATA.push({ id: 1, colStart: Cm, rowStart: Rm - rowSpan2, colSpan: colSpan2, rowSpan: rowSpan2, colorClass: COLOR_CLASSES[1] });
+                colSpan = Math.max(1, colSpan);
+                rowSpan = Math.max(1, rowSpan);
 
-            // Rectangle 3: Bottom-Left Quadrant (color-3)
-            const colSpan3 = getRandomSpan(Cm - 1); 
-            const rowSpan3 = getRandomSpan(GRID_ROWS - Rm); 
-            RECTANGLE_DATA.push({ id: 2, colStart: Cm - colSpan3, rowStart: Rm, colSpan: colSpan3, rowSpan: rowSpan3, colorClass: COLOR_CLASSES[2] });
+                let colStart, rowStart;
 
-            // Rectangle 4: Bottom-Right Quadrant (color-4)
-            const colSpan4 = getRandomSpan(GRID_COLUMNS - Cm); 
-            const rowSpan4 = getRandomSpan(GRID_ROWS - Rm); 
-            RECTANGLE_DATA.push({ id: 3, colStart: Cm, rowStart: Rm, colSpan: colSpan4, rowSpan: rowSpan4, colorClass: COLOR_CLASSES[3] });
+                if (q.dx === -1) colStart = Cm - colSpan;
+                else colStart = Cm;
+
+                if (q.dy === -1) rowStart = Rm - rowSpan;
+                else rowStart = Rm;
+
+                // Clipping
+                if (colStart < 1) {
+                    const diff = 1 - colStart;
+                    colStart = 1;
+                    colSpan -= diff;
+                }
+                if (colStart + colSpan > GRID_COLUMNS + 1) {
+                    colSpan = (GRID_COLUMNS + 1) - colStart;
+                }
+
+                if (rowStart < 1) {
+                    const diff = 1 - rowStart;
+                    rowStart = 1;
+                    rowSpan -= diff;
+                }
+                if (rowStart + rowSpan > GRID_ROWS + 1) {
+                    rowSpan = (GRID_ROWS + 1) - rowStart;
+                }
+
+                if (colSpan > 0 && rowSpan > 0) {
+                    resultData.push({
+                        id: q.id,
+                        colStart: colStart,
+                        rowStart: rowStart,
+                        colSpan: colSpan,
+                        rowSpan: rowSpan,
+                        colorClass: q.color
+                    });
+                }
+            });
+
+            return resultData;
         }
 
         /**
-         * Rendert die Rechtecke, indem absolute Pixelwerte und CSS Transform für flüssiges Morphing angewendet werden.
+         * Sammelt ALLE Gitterpunkte für die Statistik (Anzahl).
          */
+        function getCoveredGridPoints(rectData, gridSize) {
+            if (!rectData || rectData.length === 0) return new Set();
+            
+            const points = new Set();
+            
+            rectData.forEach(data => {
+                const startColIndex = data.colStart - 1;
+                const endColIndex = data.colStart - 1 + data.colSpan;
+                
+                const startRowIndex = data.rowStart - 1;
+                const endRowIndex = data.rowStart - 1 + data.rowSpan;
+
+                for (let c = startColIndex; c <= endColIndex; c++) {
+                    for (let r = startRowIndex; r <= endRowIndex; r++) {
+                        const pixelX = c * gridSize;
+                        const pixelY = r * gridSize;
+                        points.add(`${pixelX},${pixelY}`);
+                    }
+                }
+            });
+            
+            return points;
+        }
+
         function renderRectangles(gridSize, immediate = false) {
-            // Initiales Rendern: Erstellt die Rechteck-Elemente, falls sie nicht existieren
             if (currentRectangleElements.length === 0) {
                 gridContainer.innerHTML = ''; 
                 for (let i = 0; i < NUM_RECTANGLES; i++) {
@@ -311,7 +400,6 @@
                     rect.style.width = '0px'; 
                     rect.style.height = '0px'; 
                     rect.style.transform = 'translate(0px, 0px)';
-
                     gridContainer.appendChild(rect);
                     currentRectangleElements.push(rect);
                 }
@@ -319,125 +407,109 @@
             }
             
             if (immediate) {
-                currentRectangleElements.forEach(rect => rect.style.transition = 'none');
+                currentRectangleElements.forEach(rect => {
+                    rect.style.transition = 'none';
+                    rect.style.transitionDelay = '0ms'; 
+                });
             }
 
-            // Aktualisiert die vorhandenen Rechteck-Elemente mit neuen Daten
             RECTANGLE_DATA.forEach((data, index) => {
                 const rect = currentRectangleElements[index];
                 if (rect) {
                     COLOR_CLASSES.forEach(cls => rect.classList.remove(cls));
                     rect.classList.add(data.colorClass); 
                     
+                    if (!immediate) {
+                        rect.style.transitionDelay = `${index * 30}ms`;
+                    } else {
+                        rect.style.transitionDelay = '0ms';
+                    }
+                    
                     const pixelWidth = data.colSpan * gridSize;
                     const pixelHeight = data.rowSpan * gridSize;
                     let pixelX = (data.colStart - 1) * gridSize; 
                     let pixelY = (data.rowStart - 1) * gridSize; 
                     
-                    // --- ANPASSUNG ZUR BEHEBUNG VON SUBPIXEL-LÜCKEN (Überlappung) ---
                     const fixedWidth = pixelWidth + PIXEL_FIX;
                     const fixedHeight = pixelHeight + PIXEL_FIX;
                     
-                    // Korrigiert die Position, wenn das Rechteck nicht am oberen/linken Rand beginnt
-                    if (data.colStart > 1) {
-                        pixelX -= PIXEL_FIX;
-                    }
-                    if (data.rowStart > 1) {
-                        pixelY -= PIXEL_FIX;
-                    }
+                    if (data.colStart > 1) pixelX -= PIXEL_FIX;
+                    if (data.rowStart > 1) pixelY -= PIXEL_FIX;
 
                     rect.style.width = `${fixedWidth}px`;
                     rect.style.height = `${fixedHeight}px`;
-
                     rect.style.transform = `translate(${pixelX}px, ${pixelY}px)`;
                 }
             });
             
-            // Reaktiviert Transitionen nach kurzer Verzögerung 
             if (immediate) {
                 setTimeout(() => {
                     currentRectangleElements.forEach(rect => {
                         rect.style.transition = 'transform 500ms ease-in-out, width 500ms ease-in-out, height 500ms ease-in-out, background-color 300ms ease-out';
+                        rect.style.transitionDelay = '0ms'; 
                     });
                 }, 50);
+            } else {
+                setTimeout(() => {
+                    currentRectangleElements.forEach(rect => {
+                        rect.style.transitionDelay = '0ms';
+                    });
+                }, 1000);
             }
         }
         
-        /**
-         * Zeichnet das Hintergrundraster als Plus-Symbole auf das Canvas Element.
-         */
         function renderCanvasGrid(gridWidth, gridHeight, gridSize) {
             const ctx = plusCanvas.getContext('2d');
-            
-            // Setzt die Dimensionen des Canvas
             plusCanvas.width = gridWidth + 1; 
             plusCanvas.height = gridHeight + 1;
-
             ctx.clearRect(0, 0, plusCanvas.width, plusCanvas.height);
-
-            // Styling für Hintergrund-Symbole (weiß, transparent, dünn)
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)'; // 20% Deckkraft weiß
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
             const lineThickness = 1;
             const plusSize = parseFloat(root.style.getPropertyValue('--plus-size')) || 6;
 
-            // Zeichnet alle Grid-Schnittpunkte
             for (let r = 0; r <= GRID_ROWS; r++) {
                 for (let c = 0; c <= GRID_COLUMNS; c++) {
                     const centerX = c * gridSize;
                     const centerY = r * gridSize;
-
-                    // Zeichnet horizontalen Strich
                     ctx.fillRect(centerX - plusSize / 2, centerY - lineThickness / 2, plusSize, lineThickness);
-                    
-                    // Zeichnet vertikalen Strich
                     ctx.fillRect(centerX - lineThickness / 2, centerY - plusSize / 2, lineThickness, plusSize);
                 }
             }
         }
 
-        /**
-         * Rendert die Plus-Symbole an den Eckpunkten der Rechtecke im Vordergrund (DOM-Elemente).
-         */
-        function renderForegroundPlusIcons(gridWidth, gridHeight, gridSize) {
+        function renderForegroundPlusIcons(gridWidth, gridHeight, gridSize, customData = null) {
             plusFrontLayer.innerHTML = ''; 
-            
             plusFrontLayer.style.width = `${gridWidth + 1}px`; 
             plusFrontLayer.style.height = `${gridHeight + 1}px`; 
 
-            // 1. Sammelt alle Eckpunkt-Koordinaten
+            const dataToUse = customData || RECTANGLE_DATA;
+            if (dataToUse.length === 0) return [];
+
             const cornerPoints = new Set(); 
-            if (RECTANGLE_DATA.length > 0) {
-                 const Cm = RECTANGLE_DATA[1].colStart; 
-                 const Rm = RECTANGLE_DATA[2].rowStart; 
-                 
-                 const pX = (Cm - 1) * gridSize;
-                 const pY = (Rm - 1) * gridSize;
-                 
-                 cornerPoints.add(`${pX},${pY}`);
-                 
-                 // Die 16 Eckpunkte der 4 Rechtecke
-                 RECTANGLE_DATA.forEach(data => {
-                    const startX = (data.colStart - 1) * gridSize;
-                    const startY = (data.rowStart - 1) * gridSize;
-                    const endX = (data.colStart + data.colSpan - 1) * gridSize;
-                    const endY = (data.rowStart + data.rowSpan - 1) * gridSize;
+            dataToUse.forEach(data => {
+                const startX = (data.colStart - 1) * gridSize;
+                const startY = (data.rowStart - 1) * gridSize;
+                const endX = (data.colStart + data.colSpan - 1) * gridSize;
+                const endY = (data.rowStart + data.rowSpan - 1) * gridSize;
+                
+                cornerPoints.add(`${startX},${startY}`);
+                cornerPoints.add(`${endX},${startY}`);
+                cornerPoints.add(`${startX},${endY}`);
+                cornerPoints.add(`${endX},${endY}`);
+            });
 
-                    cornerPoints.add(`${startX},${startY}`);
-                    cornerPoints.add(`${endX},${startY}`);
-                    cornerPoints.add(`${startX},${endY}`);
-                    cornerPoints.add(`${endX},${endY}`);
-                });
-            }
-
-            // 2. Erstellt Plus-Symbole
             const createdIcons = [];
             cornerPoints.forEach(key => {
                 const [leftPos, topPos] = key.split(',').map(Number);
-
                 const plusForeground = document.createElement('div');
                 plusForeground.classList.add('plus-icon');
                 plusForeground.style.top = `${topPos}px`;
                 plusForeground.style.left = `${leftPos}px`;
+                
+                if (customData) {
+                    plusForeground.style.opacity = '1.0';
+                }
+                
                 plusFrontLayer.appendChild(plusForeground);
                 createdIcons.push(plusForeground);
             });
@@ -445,86 +517,174 @@
             return createdIcons;
         }
 
-        /**
-         * Lässt die Icons nacheinander aufleuchten.
-         */
         function staggerLightUpIcons(icons) {
             icons.forEach((icon, index) => {
                 setTimeout(() => {
                     icon.style.opacity = '1.0';
-                    // playClickSound() entfernt
-                }, index * 50);
+                }, index * 30);
             });
         }
 
-
-        /**
-         * Aktualisiert die CSS-Variable für die Rastergröße und passt alle Elemente an.
-         */
         function updateGrid(size) {
             const gridSize = parseInt(size);
-            
             root.style.setProperty('--grid-size', gridSize + 'px');
             sizeDisplay.textContent = gridSize;
-
             const { gridWidth, gridHeight } = calculateGridDimensions(gridSize);
-            
             renderCanvasGrid(gridWidth, gridHeight, gridSize);
-            
             const icons = renderForegroundPlusIcons(gridWidth, gridHeight, gridSize);
             icons.forEach(icon => icon.style.opacity = '1.0');
-
             renderRectangles(gridSize, true); 
         }
 
-        /**
-         * Behandelt Klicks auf den Grid-Container, um den neuen Mittelpunkt zu setzen.
-         */
-        function handleImageClick(event) {
-            // initializeAudio() entfernt
-            
-            if (currentMorphTimeout !== null) return;
-            
-            const gridSize = parseInt(slider.value);
+        // --- INTERAKTIONSHANDLER ---
+
+        function getEventPos(e) {
             const rect = gridContainer.getBoundingClientRect();
+            let clientX, clientY;
             
-            const relativeX = event.clientX - rect.left;
-            const relativeY = event.clientY - rect.top;
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+            
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
 
-            let cIndex = Math.round(relativeX / gridSize);
-            let rIndex = Math.round(relativeY / gridSize);
+        function handleStart(e) {
+            if (currentMorphTimeout !== null) return;
+            if(e.type === 'touchstart') e.preventDefault();
 
+            const gridSize = parseInt(slider.value);
+            const pos = getEventPos(e);
+
+            let cIndex = Math.round(pos.x / gridSize);
+            let rIndex = Math.round(pos.y / gridSize);
+            
             cIndex = Math.max(1, Math.min(cIndex, GRID_COLUMNS - 1)); 
             rIndex = Math.max(1, Math.min(rIndex, GRID_ROWS - 1));
 
-            const newCm = cIndex + 1;
-            const newRm = rIndex + 1;
+            dragCenterCol = cIndex + 1;
+            dragCenterRow = rIndex + 1;
+
+            dragStartX = cIndex * gridSize;
+            dragStartY = rIndex * gridSize;
+
+            isDragging = true;
+            currentRadiusPx = 0;
+            previewRectangleData = [];
             
-            // 1. Generiert NEUE Positionen, OHNE sie sofort anzuwenden
-            generateRectangleData(newCm, newRm);
+            fixedDragAngles = [
+                Math.random() * (Math.PI / 2),
+                Math.random() * (Math.PI / 2),
+                Math.random() * (Math.PI / 2),
+                Math.random() * (Math.PI / 2)
+            ];
+            lastRenderedSignature = ''; 
+
+            dragCircle.style.display = 'block';
+            dragCircle.style.width = '0px';
+            dragCircle.style.height = '0px';
+            dragCircle.style.left = `${dragStartX}px`;
+            dragCircle.style.top = `${dragStartY}px`;
+
+            dragCenterDot.style.display = 'block';
+            dragCenterDot.style.left = `${dragStartX}px`;
+            dragCenterDot.style.top = `${dragStartY}px`;
+
+            dragLine.style.display = 'block';
+            dragLine.style.left = `${dragStartX}px`;
+            dragLine.style.top = `${dragStartY}px`;
+            dragLine.style.width = '0px';
+
+            statsDisplay.style.display = 'block';
+            statRadius.innerText = "0px";
+            statPlusses.innerText = "0";
+        }
+
+        function handleMove(e) {
+            if (!isDragging) return;
+            if(e.type === 'touchmove') e.preventDefault();
+
+            const pos = getEventPos(e);
+            const gridSize = parseInt(slider.value);
+            const { gridWidth, gridHeight } = calculateGridDimensions(gridSize);
             
-            // 2. Rendert die Vordergrund-Plus-Symbole SOFORT (noch unsichtbar)
+            const dx = pos.x - dragStartX;
+            const dy = pos.y - dragStartY;
+            currentRadiusPx = Math.sqrt(dx*dx + dy*dy);
+
+            const diameter = currentRadiusPx * 2;
+            dragCircle.style.width = `${diameter}px`;
+            dragCircle.style.height = `${diameter}px`;
+
+            const angle = Math.atan2(dy, dx);
+            dragLine.style.width = `${currentRadiusPx}px`;
+            dragLine.style.transform = `rotate(${angle}rad)`;
+
+            // --- STATS & LIVE PREVIEW ---
+            const radiusInGridUnits = Math.floor(currentRadiusPx / gridSize);
+            statRadius.innerText = Math.round(currentRadiusPx) + "px";
+
+            if (radiusInGridUnits >= 2) {
+                previewRectangleData = generateRectangleData(dragCenterCol, dragCenterRow, radiusInGridUnits, fixedDragAngles);
+                
+                const currentSignature = JSON.stringify(previewRectangleData);
+                if (currentSignature !== lastRenderedSignature) {
+                    
+                    const coveredPoints = getCoveredGridPoints(previewRectangleData, gridSize);
+                    statPlusses.innerText = coveredPoints.size;
+                    statPlusses.style.color = "#fff"; 
+
+                    renderForegroundPlusIcons(gridWidth, gridHeight, gridSize, previewRectangleData);
+                    
+                    lastRenderedSignature = currentSignature;
+                }
+
+            } else {
+                statPlusses.innerText = "0";
+                statPlusses.style.color = "#aaa"; 
+                previewRectangleData = [];
+                plusFrontLayer.innerHTML = ''; 
+                lastRenderedSignature = '';
+            }
+        }
+
+        function handleEnd(e) {
+            if (!isDragging) return;
+            isDragging = false;
+            
+            dragCircle.style.display = 'none';
+            dragCenterDot.style.display = 'none';
+            dragLine.style.display = 'none';
+
+            const gridSize = parseInt(slider.value);
+            
+            if (!previewRectangleData || previewRectangleData.length === 0) {
+                return; 
+            }
+
+            RECTANGLE_DATA = previewRectangleData;
+
             const { gridWidth, gridHeight } = calculateGridDimensions(gridSize);
             const newIcons = renderForegroundPlusIcons(gridWidth, gridHeight, gridSize);
-            
-            // 3. Startet das sequentielle Aufleuchten
+            newIcons.forEach(icon => icon.style.opacity = '0.0');
+
             staggerLightUpIcons(newIcons);
 
-            // 4. Startet den Morphing-Timeout (1000ms)
             currentMorphTimeout = setTimeout(() => {
                 renderRectangles(gridSize); 
                 currentMorphTimeout = null; 
-            }, 1000); // 1 Sekunde Verzögerung
+            }, 1000);
         }
 
-        /**
-         * Initialisiert die Anwendung und richtet Event-Listener ein.
-         */
         function initialize() {
-            // Event listener für den Slider (Echtzeit-Update ohne Throttling)
             slider.addEventListener('input', (event) => {
-                 // initializeAudio() entfernt
-                
                 if (currentMorphTimeout !== null) {
                     clearTimeout(currentMorphTimeout);
                     currentMorphTimeout = null;
@@ -532,22 +692,25 @@
                 updateGrid(event.target.value);
             });
             
-            // Event listener für Klick in das Bild (neuer Mittelpunkt)
-            gridContainer.addEventListener('click', handleImageClick);
+            gridContainer.addEventListener('mousedown', handleStart);
+            window.addEventListener('mousemove', handleMove); 
+            window.addEventListener('mouseup', handleEnd);
 
-            // Initiales Rendering beim Laden der Seite
+            gridContainer.addEventListener('touchstart', handleStart, {passive: false});
+            window.addEventListener('touchmove', handleMove, {passive: false});
+            window.addEventListener('touchend', handleEnd);
+
             const initialGridSize = slider.value;
-            generateRectangleData(); 
             updateGrid(initialGridSize); 
 
-            // Passt das Grid bei Fenstergröße-Änderung an
             window.addEventListener('resize', () => {
                  updateGrid(slider.value);
             });
         }
 
-        // Startet die Anwendung erst nach dem vollständigen Laden des Fensters.
         window.onload = initialize;
     </script>
 </body>
 </html>
+
+
